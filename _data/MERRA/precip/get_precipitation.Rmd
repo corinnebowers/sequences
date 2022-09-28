@@ -1,0 +1,148 @@
+---
+title: "get_precip"
+output: html_document
+author: Corinne Bowers
+date: 2022-09-27
+theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This script creates a raster stack of precipitation, measured as total mm of accumulation over the specified time period (either 3 hours or 24 hours).
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+
+```
+
+# setup 
+
+## functions & packages 
+
+```{r}
+source('_data/setup.R')
+cores <- parallel::detectCores()-2
+
+## define function to convert from array to raster
+array_to_raster <- function(x) {
+  x %>% 
+    aperm(c(2,1,3)) %>% 
+    brick(
+      xmn = min(lon_merra)-xres/2, xmx = max(lon_merra)+xres/2,
+      ymn = min(lat_merra)-yres/2, ymx = max(lat_merra)+yres/2,
+      crs = projection(wus)) %>%
+    raster::flip('y')
+}
+
+```
+
+## metadata
+
+```{r}
+## define MERRA timeseries
+ts_merra <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- ts_merra %>% as.Date %>% unique
+
+## define MERRA lat/lon bounding box
+lon_merra <- seq(-140, -100, xres) + xres/2
+lat_merra <- seq(20, 60, yres) + yres/2
+
+## define empty raster
+empty <- grid_ca %>% setValues(NA)
+
+```
+
+# download MERRA-2 precipitation files
+
+The process for downloading the MERRA-2 hourly precipitation files is as follows: 
+
+1. Get a list of wget links from https://disc.gsfc.nasa.gov/ and save the list as `url.txt`. You need an Earthdata account to do this. 
+  + The correct file should be M2T1NXFLX.5.12.4. Make sure to download MERRA-2, not MERRA, and check that the spatial resolution is 0.5x0.625 and the temporal resolution is one hour. 
+  + Select the correct variables (we used PRECTOT and PRECTOTCORR) and the correct bounding box (we used [-140, 20, -100, 60] to capture the western US). 
+  + Please note that the link list will expire within a few days of generation.
+2. Run `wget_loop.sh` to iteratively download files, one per day. Check in occasionally and restart the process when it stalls.
+3. Run the code chunk below to identify failed file downloads. 
+4. Iterate steps 2-3 until a sufficient number of files have been successfully downloaded.
+
+```{r}
+## check for failed file dates
+files <- list.files('/scratch/users/cbowers/MERRA/files') %>% .[grepl('MERRA2_', .)]
+filedates <- files %>% str_split('\\.') %>% lapply(function(x) x[[3]]) %>% unlist %>% ymd
+dates <- dates_merra
+match(dates, filedates) %>% is.na %>% which %>% dates[.]
+
+```
+
+# create precipitation raster
+
+## 3-hour data
+
+```{r}
+## load all 3-hour precipitation values
+start <- Sys.time()
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+pb <- txtProgressBar(min = 0, max = length(dates), style = 3)
+PRCP <- 
+  foreach (
+    i = 1:length(dates),
+    .export = 'array_to_raster',
+    .options.snow = opts,
+    .packages = c('ncdf4', 'raster', 'sf', 'dplyr', 'lubridate')) %dopar% {
+      if (dates[i] %in% filedates) { ## add precipitation info to daily list
+        nc <- nc_open(paste0('/scratch/users/cbowers/MERRA/files/', files[which(dates[i] == filedates)]))
+        prcp <- ncvar_get(nc, 'PRECTOT') / 1e3 * 60^2 * 1e3  #mm/hr
+        nc_close(nc)
+        array_to_raster(prcp) %>% 
+          crop(grid_ca) %>% 
+          stackApply(indices = rep(1:8, each = 3), fun = sum)  #mm total in 3 hours 
+      } else stack(mget(rep('empty',8))) ## leave blank if data is missing
+    }
+stopCluster(cl)
+
+## convert to raster stack
+prcp <- PRCP %>% do.call('stack', .)
+
+## save out
+save(prcp, file = '_data/MERRA/precip/precip_3hr_0922.Rdata')
+Sys.time() - start
+
+```
+
+## 24-hour data 
+
+```{r}
+## load all daily precipitation values
+start <- Sys.time()
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+pb <- txtProgressBar(min = 0, max = length(dates), style = 3)
+PRCP <- 
+  foreach (
+    i = 1:length(dates),
+    .export = 'array_to_raster',
+    .options.snow = opts,
+    .packages = c('ncdf4', 'raster', 'sf', 'dplyr', 'lubridate')) %dopar% {
+      if (dates[i] %in% filedates) { ## add precipitation info to daily list
+        nc <- nc_open(paste0('../MERRA/files/', files[which(dates[i] == filedates)]))
+        prcp <- ncvar_get(nc, 'PRECTOT') / 1e3 * 60^2 * 1e3  #mm/hr
+        nc_close(nc)
+        array_to_raster(prcp) %>% 
+          crop(grid_ca) %>% 
+          calc(sum)  #mm daily total 
+      } else empty  ## leave blank if data is missing
+    }
+stopCluster(cl)
+
+## convert to raster stack
+prcp <- PRCP %>% do.call('stack', .)
+
+## save out
+save(prcp, file = '_data/MERRA/precip/precip_24hr_0928.Rdata')
+Sys.time() - start
+
+```
+
+
+

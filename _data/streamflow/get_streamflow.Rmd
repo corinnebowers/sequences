@@ -1,0 +1,353 @@
+---
+title: "get_streamflow"
+output: html_document
+author: Corinne Bowers
+date: 2022-09-27
+theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This script creates timeseries of streamflow, runoff, and normalized streamflow for selected USGS streamgages in California. It will NOT run beginning-to-end without interruption. Please see the notes throughout to identify locations where additional analysis is needed from outside of the R environment. 
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+# rm(list=ls())
+
+```
+
+# setup 
+
+```{r}
+## load packages & functions
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+
+## set up parallel backend
+cores <- parallel::detectCores()-2
+
+## unit conversions
+mile2feet <- 5280
+meter2feet <- 3.28084
+
+```
+
+# get CA gage information
+
+## download gages
+
+```{r}
+## identify gages in CA
+gages <- parameterCdFile %>%
+  filter(parameter_group_nm == 'Physical') %>%
+  filter(grepl('discharge', str_to_lower(parameter_nm))) %>%
+  transmute(param_cd = parameter_cd, param = parameter_nm) %>%
+  inner_join(
+    whatNWISdata(
+      stateCd = 'CA',
+      parameterCd = c('00060', '00061', '30208', '30209')) %>%
+      transmute(
+        site_no, param_cd = parm_cd, stat_cd,
+        begin_date, end_date, count_nu,
+        dec_long_va, dec_lat_va),
+    by = 'param_cd')
+
+```
+
+## subset to valid gages only 
+
+```{r}
+## remove duplicate site numbers
+gages <- gages %>%
+  filter(stat_cd == '00003') %>%
+  group_by(site_no) %>%
+  summarize(
+    param_cd = param_cd[1], param = param[1],
+    site_no = site_no[1],
+    stat_cd = stat_cd[1],
+    begin_date = min(begin_date), end_date = max(end_date),
+    count_nu = max(count_nu),
+    dec_long_va = mean(dec_long_va), dec_lat_va = mean(dec_lat_va))
+
+## keep gages with at least 10 years of data in the MERRA-2 time window
+gages <- gages %>%
+  filter(paste(end_date) > '1980-01-01' & paste(begin_date) < '2021-12-31') %>%
+  mutate(
+    nyr = map2_dbl(
+      .x = begin_date,
+      .y = end_date,
+      .f = function(x,y) {
+        length(seq(max(c(x, ymd('1980-01-01'))), min(c(y, ymd('2021-12-31'))), 'years'))
+      })
+    ) %>%
+  filter(nyr >= 10)
+
+## keep gages with records for at least 1% of days
+gages <- gages %>% filter(count_nu > (0.01*length(dates_merra)))
+
+## keep gages with valid geospatial information
+gages <- gages %>%
+  filter(!is.na(dec_long_va) & !is.na(dec_lat_va)) %>%
+  st_as_sf(coords = c('dec_long_va', 'dec_lat_va'), crs = st_crs(wgs84)) %>%
+  st_transform(nad83) %>%
+  mutate(cell = raster::extract(grid_ca, .)) %>%
+  filter(!is.na(cell))
+
+```
+
+## checkpoint
+
+```{r}
+# ## save out
+# save(gages, file = '_data/streamflow/gages_0922.Rdata')
+
+## load from file
+load('_data/streamflow/gages_0922.Rdata')
+
+```
+
+# get drainage area shapefiles
+
+## calculate drainage area from NWIS
+
+```{r}
+gages <- gages %>%
+  mutate(area_nwis = readNWISsite(siteNumbers = gages$site_no)$drain_area_va * mile2feet^2)
+
+```
+
+## create drainage geometries via StreamStats API
+https://streamstats.usgs.gov/docs/streamstatsservices/#/
+
+The Sherlock process to download these data are is as follows: 
+
+1. Update `get_drainage.R` and `get_drainage2.R` to call the correct gages.Rmd file.
+2. Update `get_drainage.sbatch` and `get_drainage2.R` to run the correct number of array instances. We used blocks of 1,000, so the number of array instances = number of gages/1,000 = 12.
+3. Run `get_drainage.sbatch`, which calls `get_drainage.R` and creates 12 .Rdata files of drainage areas based on USGS streamgages. This R file allows failed gages because some of the API calls will fail randomly.
+4. Run `get_drainage2.sbatch`, which calls `get_drainage2.R` and attempts to rerun the failed API calls and fill in missing data. The script creates the dataframe `drainage_full.Rdata`.  
+5. Repeat step 4 iteratively until the number of failed API calls falls below some acceptable threshold, i.e. less than 5% of all gages. 
+6. Load `drainage_full.Rdata` below.
+
+```{r}
+## load API calculated results from file 
+load('_data/streamflow/drainage_api/drainage_full.Rdata')
+drainage_api <- 
+  drainage_full %>%
+  reduce(rbind) %>%
+  st_make_valid %>%
+  mutate(area_api = toNumber(st_area(.)) * meter2feet^2)
+rm(drainage_full)
+
+```
+
+## create drainage geometries via StreamStats batch processor
+https://streamstatsags.cr.usgs.gov/ss_bp/
+
+The process to use the StreamStats batch processor is as follows:
+
+1. The batch processor has a max row count of 200, so save the gages into six separate files.
+2. Run the files (takes a few days) and load the results below. 
+
+```{r eval = FALSE}
+## write out in groups of 200 for batch processor
+st_write(
+  gages[1:200,] %>% select(site_no),
+  dsn = '_data/get_drainage/gages1.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+st_write(
+  gages[201:400,] %>% select(site_no),
+  dsn = '_data/get_drainage/gages2.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+st_write(
+  gages[401:600,] %>% select(site_no),
+  dsn = '_data/get_drainage/gages3.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+st_write(
+  gages[601:800,] %>% select(site_no),
+  dsn = '_data/get_drainage/gages4.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+st_write(
+  gages[801:1000,] %>% select(site_no),
+  dsn = '_data/get_drainage/gages5.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+st_write(
+  gages[1001:nrow(gages),] %>% select(site_no),
+  dsn = '_data/get_drainage/gages6.shp',
+  delete_dsn = TRUE, quiet = TRUE)
+
+```
+
+```{r}
+## load batch processor results from file
+file_id <- 
+  c('1133046413374416881', 
+    '2133046413629627867', 
+    '3133046413829478084', 
+    '4133046414007610357',
+    '5133046414225956539',
+    '6133046414450338643')
+file <- paste0('_data/streamflow/drainage_batch/gages', file_id, '/gages', file_id, '.gdb')
+
+drainage_batch <-  
+  map_dfr(
+    .x = file, 
+    .f = ~st_read(.x, layer = 'GlobalWatershed', quiet = TRUE) %>% 
+      transmute(site_no = Name, area_batch = DRNAREA*mile2feet^2))
+
+```
+
+## identify gages with valid drainage geometries
+
+```{r}
+gages_area <- 
+  gages %>% st_drop_geometry %>% select(site_no, area_nwis) %>% 
+  full_join(
+    drainage_api %>% st_drop_geometry %>% select(site_no, area_api),
+    by = 'site_no') %>% 
+  full_join(
+    drainage_batch %>% st_drop_geometry %>% select(site_no, area_batch),
+    by = 'site_no') %>% 
+  mutate(
+    error_nwis_batch = abs(area_nwis-area_batch)/area_nwis,
+    error_nwis_api = abs(area_nwis-area_api)/area_nwis,
+    error_api_batch = abs(area_api-area_batch)/area_api)
+
+gages_area <- gages_area %>% 
+  mutate(
+    pass = case_when(
+      error_nwis_api < 0.1 & error_nwis_batch < 0.1 ~ 'both',
+      error_nwis_api < 0.1 ~ 'api',
+      error_nwis_batch < 0.1 ~ 'batch',
+      error_api_batch < 0.01 & area_api > mile2feet^2 & area_batch > mile2feet^2 ~ 'either',
+      TRUE ~ 'fail'))
+gages_api <- gages_area %>% filter(pass %in% c('both', 'api', 'either')) %>% pull(site_no)
+gages_batch <- gages_area %>% filter(pass == 'batch') %>% pull(site_no)
+
+```
+
+## combine valid geometries 
+
+```{r}
+drainage <- 
+  rbind(
+    drainage_api %>% 
+      filter(site_no %in% gages_api) %>% 
+      select(site_no, geometry),
+    drainage_batch %>% 
+      filter(site_no %in% gages_batch) %>% 
+      rename(geometry = Shape) %>% 
+      select(site_no, geometry) %>% 
+      st_transform(st_crs(drainage_api))) %>% 
+  arrange(site_no) %>% 
+  st_make_valid %>% 
+  mutate(area = toNumber(st_area(.))*meter2feet^2)
+gages <- gages %>% filter(site_no %in% drainage$site_no)
+
+```
+
+## checkpoint
+
+```{r}
+## save out
+save(drainage, gages, file = '_data/streamflow/drainage_0928.Rdata')
+
+# ## load from file
+# load('_data/streamflow/drainage_0928.Rdata')
+
+```
+
+# get flows
+
+The process for downloading streamflow timeseries via Sherlock is as follows:
+
+1. Update `get_flows.sbatch` to reflect the correct gages.Rmd file (use the one filtered to only valid drainage geometries) and the correct number of array instances (number of filtered gages/1,000 = XX).
+2. Run `get_flows.sbatch`, which calls `get_flows.R` and creates XX .Rdata files of streamflow.
+3. Load the results below.
+
+## load from file 
+
+```{r}
+# ## load from file
+# flows_save <-
+#   # map(.x = 1:12, .f = ~load(paste0('_data/get_flows/flow', .x, '.Rdata'))) %>%
+#   foreach (i = 1:12) %do% {
+#     load(paste0('_data/get_flows/flow', i, '.Rdata'))
+#     flows
+#   } %>%
+#   lapply(function(x) {
+#     if (nrow(x) == 0) {
+#       x %>% mutate(Flow = NA) %>% select(site_no, dateTime, Flow)
+#     } else {
+#       x %>% select(site_no, dateTime, Flow)
+#     }
+#   }) %>%
+#   reduce(.f = rbind)
+# save(flows_save, file = '_data/_checkpoints/flow_0818.Rdata')
+
+load('_data/_checkpoints/flow_0818.Rdata')
+flows <- flows_save
+
+```
+
+## fill in data gaps
+
+```{r}
+## add NAs for missing dates
+datetimes <- 
+  expand.grid(
+    dateTime = seq(ymd('1980-01-01'), ymd('2021-12-31'), 'days'),
+    site_no = unique(gages$site_no)) %>% 
+  left_join(
+    gages %>% st_drop_geometry %>% select(site_no, begin_date, end_date), 
+    by = 'site_no') %>%
+  mutate(include = dateTime >= begin_date & dateTime <= end_date)
+flows <- datetimes %>% left_join(flows, by = c('dateTime', 'site_no'))
+
+## impute gaps less than a week
+flows <- flows %>% 
+  group_by(site_no) %>% 
+  mutate(rolling = lag(Flow, agg = 7, fun = 'Mean', align = 'center')) %>% 
+  mutate(imputed = ifelse(is.na(Flow), rolling, Flow)) %>% 
+  ungroup
+
+```
+
+## remove gages with insufficient flow records
+
+```{r}
+## get rid of gages with <25% coverage
+coverage25 <- flows %>% 
+  filter(include) %>% 
+  group_by(site_no) %>% 
+  summarize(coverage = sum(!is.na(Flow))/length(Flow)) %>% 
+  filter(coverage >= 0.25) %>% 
+  pull(site_no)
+
+flows <- flows %>% filter(site_no %in% coverage25)
+gages <- gages %>% filter(site_no %in% coverage25)
+
+```
+
+## checkpoint
+
+```{r}
+save(flows, gages, file = '_data/get_flows/flows_0928.Rdata')
+
+```
+
+# calculate runoff 
+
+# calculate spatially averaged runoff estimates
+list paper reference here
+
+## average by HUC8 
+
+## regionalize by HUC4
+
+## aggregate to MERRA grid
+
+# calculate normalized streamflow
+
+# calculate spatially averaged normalized streamflow estimates
