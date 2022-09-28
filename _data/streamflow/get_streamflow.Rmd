@@ -339,15 +339,230 @@ save(flows, gages, file = '_data/get_flows/flows_0928.Rdata')
 
 # calculate runoff 
 
+```{r}
+## discharge is in ft^3/second (cfs) --> convert to mm/day
+flows <- flows %>% 
+  select(-starts_with('area')) %>% 
+  left_join(
+    drainage %>% st_drop_geometry %>% transmute(site_no, area_sqft = area),
+    by = 'site_no') %>% 
+  mutate(runoff_ft = imputed*60^2*24 / area_sqft) %>%
+  mutate(runoff = runoff_ft*12*25.4) 
+
+## gut-check numbers
+summary(flows$runoff)
+# flows %>% arrange(desc(runoff)) %>% .[1:100,] %>% 
+#   left_join(gages_area %>% select(site_no, pass), by = 'site_no')
+
+```
+
 # calculate spatially averaged runoff estimates
-list paper reference here
+https://waterwatch.usgs.gov/index.php?id=romap3
+https://waterwatch.usgs.gov/wwhelps/?hid=huc_runoff_detail&print=1
 
-## average by HUC8 
+## calculate area-based weight for each gage
 
-## regionalize by HUC4
+```{r}
+## calculate area for drainage geometries
+poly1 <- drainage %>% 
+  st_make_valid %>% 
+  mutate(area.1 = toNumber(st_area(.)))
 
-## aggregate to MERRA grid
+## calculate area for HUC8 watersheds
+huc8 <- st_read('_data/WBD/WBDHU8.shp', quiet = TRUE)
+poly2 <- huc8 %>% 
+  select(huc8) %>% 
+  mutate(area.2 = toNumber(st_area(.))) %>% 
+  st_transform(st_crs(poly1))
+
+## calculate area for each intersecting piece
+binary <- st_intersects(poly1, poly2)
+lookup <- 
+  foreach (i = 1:length(binary), .combine = 'rbind') %do% {
+    suppressWarnings(
+      map_dfr(.x = binary[[i]], .f = ~st_intersection(poly1[i,], poly2[.x,]))
+    )
+  }
+
+## calculate weights by space & time based on USGS method
+lookup <- lookup %>% 
+  mutate(area.intersect = toNumber(st_area(.))) %>% 
+  st_drop_geometry %>%
+  left_join(
+    poly1 %>% st_drop_geometry %>% select(site_no), .,
+    by = 'site_no') %>%
+  left_join(
+    poly2 %>% st_drop_geometry %>% select(huc8), .,
+    by = 'huc8') %>% 
+  mutate(
+    prop.1 = toNumber(area.intersect/area.1),
+    prop.2 = toNumber(area.intersect/area.2),
+    prop.total = prop.1 * prop.2) %>% 
+  group_by(huc8) %>% 
+  mutate(weight = prop.total/Sum(prop.total)) %>% 
+  filter(weight > 0.001) %>% 
+  mutate(weight = prop.total/Sum(prop.total)) %>% 
+  ungroup %>% 
+  transmute(huc = huc8, site_no, prop.total)
+
+```
+
+## calculate weighted average runoff by HUC8 
+
+```{r}
+datelist <- seq(ymd('1980-01-01'), ymd('2021-12-31'), 'days')
+huc8_runoff <- 
+  foreach(
+    i = 1:nrow(huc8)) %do% {
+      gagelist <- lookup %>% filter(huc == huc8$huc8[i]) %>% pull(site_no)
+      
+      if (length(gagelist) == 0) {
+        ## no runoff is available
+        runoff <- rep(NA, length(datelist))
+        
+      } else if (length(gagelist) == 1) {
+        ## assign single gage to HUC8
+        runoff <- flows %>% 
+          filter(site_no %in% gagelist) %>% 
+          arrange(dateTime) %>% 
+          pull(runoff)
+        
+      } else {
+        ## calculate weighted average of multiple gages
+        flowmatrix <- flows %>% 
+          filter(site_no %in% gagelist) %>% 
+          arrange(dateTime) %>% 
+          pivot_wider(
+            id_cols = 'dateTime', names_from = 'site_no', values_from = 'runoff') %>% 
+          select(-dateTime) %>% 
+          as.matrix
+        weightlist <- lookup %>% filter(huc == huc8$huc8[i]) %>% pull(prop.total)
+        weightmatrix <- 
+          matrix(
+            data = rep(weightlist, each = length(datelist)), 
+            nrow = length(datelist), ncol = length(gagelist))
+        weightmatrix[is.na(flowmatrix)] <- NA
+        weightmatrix <- weightmatrix %>% apply(1, function(x) x/Sum(x)) %>% t
+        
+        ## assign weighted average to HUC8
+        runoff <- (flowmatrix * weightmatrix) %>% apply(1, Sum)
+      }
+      data.frame(date = datelist, huc8 = huc8$huc8[i], runoff)
+    } %>% 
+  reduce(rbind)
+
+```
+
+## regionalize and impute missing data by HUC4
+
+```{r}
+huc_runoff <- huc8_runoff %>% 
+  mutate(huc4 = str_sub(huc8, 1, 4)) %>% 
+  group_by(date, huc4) %>% 
+  mutate(runoff_avg = Mean(runoff)) %>% 
+  mutate(runoff = ifelse(is.na(runoff), runoff_avg, runoff)) %>% 
+  ungroup
+
+```
+
+## convert to match MERRA grid
+
+```{r}
+## get conversion weights from huc8 --> grid
+grid_convert <- grid_ca %>% 
+  rasterToPolygons() %>% 
+  st_as_sf %>%
+  rename(cell = layer) %>% 
+  st_transform(st_crs(huc8)) %>%
+  mutate(area.grid = toNumber(st_area(.))) %>% 
+  st_intersection(huc8 %>% select(huc8)) %>% 
+  mutate(area.intersect = toNumber(st_area(.))) %>% 
+  st_drop_geometry %>% 
+  mutate(prop = area.intersect/area.grid) %>% 
+  group_by(cell) %>% 
+  mutate(weight = prop/Sum(prop)) %>% 
+  select(cell, huc8, weight) %>% 
+  arrange(cell) %>% 
+  ungroup
+
+```
+
+```{r}
+## use conversion weights to list runoff by grid cell
+runoff <- 
+  foreach (i = 1:ncell(grid_ca)) %do% {
+    huclist <- grid_convert %>% filter(cell==i) %>% pull(huc8)
+    if (length(huclist) == 0) {
+      NULL
+    } else if (length(huclist) == 1) {
+      huc_runoff %>% filter(huc8 == huclist) %>% select(date, runoff)
+    } else {
+      hucmatrix <- 
+        map_dfc(
+          .x = huclist,
+          .f = ~huc_runoff %>% filter(huc8 == .x) %>% pull(runoff)
+        ) %>% as.matrix
+      weightmatrix <- 
+        matrix(
+          data = grid_convert %>% 
+            filter(cell==i) %>% 
+            pull(weight) %>% 
+            rep(each = length(datelist)),
+          nrow = length(datelist), ncol = length(convert))
+      data.frame(
+        date = datelist,
+        cell = i,
+        runoff = (hucmatrix * weightmatrix) %>% apply(1, Sum))
+    }
+  }
+
+```
 
 # calculate normalized streamflow
+
+```{r}
+## pull peak flow statistics (cfs) for available gages
+temp <- map_dfr(
+  .x = file,
+  .f = ~st_read(.x, layer = 'FLOWSTATS', quiet = TRUE) %>%
+    mutate(Value = toNumber(Value)) %>%
+    group_by(Name) %>%
+    filter(!('areaave' %in% RegionID) | RegionID == 'areaave') %>%
+    filter(AreaPercent == max(AreaPercent)) %>%
+    pivot_wider(
+      id_cols = 'Name',
+      names_from = 'StatLabel',
+      values_from = 'Value') %>%
+    column_to_rownames('Name') %>%
+    mutate(sumcol = apply(., 1, sum)) %>%
+    filter(sumcol > 0) %>%
+    select(-sumcol) %>%
+    rownames_to_column('site_no'))
+
+temp %>% filter(site_no %in% gages$site_no)
+383/nrow(gages)
+
+nrow(gages) - 383
+
+
+```
+
+
+```{r}
+## figure out what row names mean
+temp2 <- 
+  st_read(file[1], layer = 'FLOWSTATS', quiet = TRUE) %>% 
+  group_by(StatName) %>% 
+  summarize(StatLabel = StatLabel[1])
+
+temp2 %>% 
+  separate(StatName, sep = '-', into = c('AEP', NA), remove = FALSE) %>% 
+  mutate(AEP = toNumber(AEP)/100, RP = 1/AEP) %>% 
+  arrange(RP) %>% 
+  mutate(newlabel = paste0('RP', RP))
+
+```
+
+
 
 # calculate spatially averaged normalized streamflow estimates
