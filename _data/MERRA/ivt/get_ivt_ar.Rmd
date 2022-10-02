@@ -1,0 +1,304 @@
+---
+title: "get_ivt_ar"
+author: Corinne Bowers
+output: html_document
+date: "2022-09-28"
+theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This script downloads MERRA-2 IVT data and AR identification data from the FTP hosted by Jonathan Rutz and UCSD.
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+rm(list=ls())
+
+```
+
+# setup
+
+## functions & packages
+
+```{r}
+## define where files are saved
+# (most are very large --> stored on an external hard drive)
+# dest <- 'F:/backup_2022/Research/_data/MERRA/ivt/files/'
+dest <- '_data/MERRA/ivt/files/'
+
+## load functions & packages
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+
+## set up parallel backend
+cores <- parallel::detectCores()-2
+
+## define custom function to convert .nc array output to raster bricks
+array_to_raster <- function(x) {
+  x %>% 
+    aperm(c(2,1,3)) %>% 
+    brick(
+      xmn = min(lon_subset)-xres/2, xmx = max(lon_subset)+xres/2,
+      ymn = min(lat_subset)-yres/2, ymx = max(lat_subset)+yres/2,
+      crs = projection(wus)) %>%
+    raster::flip('y')
+}
+
+```
+
+## load MERRA-2 metadata
+
+```{r}
+## get hourly/daily timeseries
+ts_merra <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- ts_merra %>% as.Date %>% unique
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+```
+
+# download MERRA-2 AR & IVT files
+
+```{r}
+## list files available for download
+url <- "ftp://sioftp.ucsd.edu/CW3E_DataShare/Rutz_AR_Catalog/"
+h <- new_handle(dirlistonly=TRUE)
+con <- curl(url, "r", h)
+tbl <- readLines(con)[-1]
+close(con)
+years <- tbl %>% str_sub(start = -7, end = -4)
+
+```
+
+```{r}
+## download files
+# (note: this only needs to be done once --> commented out)
+# start <- Sys.time()
+# foreach (i = 1:length(tbl)) %do% {
+#   curl_download(
+#     url = paste0(url, tbl[i]),
+#     destfile = paste0(dest, tbl[i]),
+#     quiet = FALSE)
+# }
+# Sys.time() - start
+
+```
+
+# transform data files to raster stacks
+
+```{r}
+## open each file and extract IVT/AR information
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = length(tbl), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+IVT_AR <- 
+  foreach (
+    i = (1:length(tbl))[-length(tbl)],
+    .options.snow = opts, 
+    .packages = c('ncdf4', 'raster', 'tidyverse', 'lubridate'),
+    .export = 'array_to_raster') %dopar% {
+      nc <- nc_open(paste0(dest, tbl[i]))
+      ivt <- ncvar_get(nc, 'IVT', start = dim.start, count = dim.count)
+      ar <- ncvar_get(nc, 'ARs', start = dim.start, count = dim.count)
+      nc_close(nc)
+      list(array_to_raster(ivt), array_to_raster(ar))
+    }
+stopCluster(cl)
+Sys.time() - start
+
+## convert from array --> raster stacks
+# (takes about 2.5 hours on Sherlock)
+start <- Sys.time()
+ivt_merra <- IVT_AR %>% lapply(function(x) x[[1]]) %>% reduce(raster::stack)
+ar_merra <- IVT_AR %>% lapply(function(x) x[[2]]) %>% reduce(raster::stack)
+Sys.time() - start
+
+## save checkpoints
+save(ts_merra, ivt_merra, file = '_data/MERRA/ivt/ivt_merra_0928.Rdata')
+save(ts_merra, ar_merra, file = '_data/MERRA/ivt/ar_merra_0928.Rdata')
+
+## clean up
+rm(IVT_AR); gc()
+
+```
+
+```{r}
+## load from file
+load('_data/MERRA/ivt/ivt_merra_0928.Rdata')
+load('_data/MERRA/ivt/ar_merra_0928.Rdata')
+
+```
+
+# compare rasters against Fig. 6 from Rutz et al. (2019) 
+
+The purpose of this comparison is to (a) confirm that the rasters have been correctly loaded in spatially and (b) confirm that AR frequencies are approximately as expected. The frequencies will not match perfectly because here we have a few more years of data and we are using a slightly different AR detection algorithm, but a visual check of similarity is sufficient to say that the data are as expected.
+
+## calculate AR frequency by category
+
+(ran this in the separate ar_freq_by_cat.R script in Sherlock)
+
+```{r include = FALSE}
+# ## loop over all grid cells
+# start <- Sys.time()
+# pb <- txtProgressBar(min = 0, max = ncell(ivt_merra), style = 3)
+# cl <- parallel::makeCluster(cores)
+# registerDoSNOW(cl)
+# ar_freq <- foreach (
+#   j = 1:ncell(ivt_merra), 
+#   .options.snow = opts,
+#   .combine = 'rbind', 
+#   .packages = c('foreach', 'raster', 'tidyverse'), 
+#   .inorder = FALSE,
+#   .export = c('assign_AR_cat', 'create_catalog', 'add_counter')) %dopar% {
+#     ## create AR event catalog
+#     index <- rowColFromCell(ar_merra, j)
+#     catalog <- 
+#       data.frame(
+#         ts = ts_merra,
+#         ar = c(ar_merra[index[1],index[2],])==1,
+#         ivt = c(ivt_merra[index[1],index[2],])) %>%
+#       create_catalog(., name = 'ar', interval = 3, cat = TRUE)
+#     
+#     ## summarize annual occurrence frequency of AR intensity categories
+#     freq <- catalog %>%
+#       group_by(cat) %>%
+#       summarize(freq = length(ivt_max) / length(years)) %>% 
+#       full_join(data.frame(cat = 0:5), by = 'cat') %>% 
+#       arrange(cat) %>% 
+#       pull(freq)
+#     
+#     ## save out
+#     c(coordinates(ar_merra)[j,], freq)
+#   }
+# stopCluster(cl)
+# Sys.time() - start
+
+```
+
+```{r}
+## set up dataframe
+ar_freq <- 
+  matrix(ncol = 8, nrow = ncell(ivt_merra)) %>% 
+  as.data.frame %>% 
+  setNames(c('x', 'y', paste0('cat', 0:5)))
+
+## loop over all grid cells
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(ivt_merra), style = 3)
+for (j in 1:ncell(ivt_merra)) {
+  ## create AR event catalog
+  index <- rowColFromCell(ar_merra, j)
+  catalog <- 
+    data.frame(
+      ts = ts_merra,
+      ar = c(ar_merra[index[1],index[2],])==1,
+      ivt = c(ivt_merra[index[1],index[2],])) %>%
+    create_catalog(., name = 'ar', interval = 3, cat = TRUE)
+  
+  ## summarize annual occurrence frequency of AR intensity categories
+  freq <- catalog %>%
+    group_by(cat) %>%
+    summarize(freq = length(ivt_max) / length(years)) %>% 
+    full_join(data.frame(cat = 0:5), by = 'cat') %>% 
+    arrange(cat) %>% 
+    pull(freq)
+  
+  ## save out
+  ar_freq[j,] <- c(coordinates(ar_merra)[j,], freq)
+  setTxtProgressBar(pb,j)
+}
+Sys.time() - start
+
+```
+
+## checkpoint
+
+```{r}
+# ## save out
+# save(ar_freq, file = '_data/MERRA/ivt/ar_freq_0929.Rdata')
+
+## load from file
+load('_data/MERRA/ivt/ar_freq_0929.Rdata')
+
+```
+
+## map AR frequency by category
+
+```{r}
+## bin results and assign colors to match figure
+colors.grid <- rev(scico(n = 8, palette = 'roma'))
+colors.grid <- c('white', alpha(colors.grid[1], 0.25), colors.grid, alpha(colors.grid[8], 0.25))
+cuts.grid <- c(0,0.25,1,2,3,5,7.5,10,12.5,15,20,100)
+
+freq.grid <- ar_freq %>% 
+  mutate(across(
+    .cols = contains('cat'),
+    .fns = ~ifelse(is.na(.x), 0, .x/length(years)))) %>%
+  mutate(across(
+    .cols = contains('cat'), 
+    .fns = ~cut(.x, cuts.grid, include.lowest = TRUE), 
+    .names = "{.col}.bin")) %>% 
+  # mutate(across(
+  #   .cols = paste0('cat', 0:5),
+  #   .fns = ~cut(.x, c(0,0.25,100), include.lowest = TRUE, labels = c(0,1)),
+  #   .names = "{.col}.025")) %>% 
+  mutate(across(
+    .cols = contains('bin'),
+    .fns = ~colors.grid[as.numeric(.x)],
+    .names = "{.col}.color"))
+
+# freq.poly <- freq.grid %>% 
+#   select(x, y, contains('025')) %>% 
+#   rasterFromXYZ(res = c(xres,yres), crs = crs(grid_ca)) %>% 
+#   rasterToPolygons(., na.rm = TRUE, dissolve = TRUE)
+
+```
+
+```{r fig.width = 5, fig.height = 6}
+g <-
+  ggplot(freq.grid) + 
+  scale_fill_identity('Annual \nFrequency') +
+  scale_x_continuous(limits = range(lon_subset), expand = expansion(0)) + 
+  scale_y_continuous(limits = range(lat_subset), expand = expansion(0)) + 
+  theme_void() + theme(text = element_text(family = 'Segoe UI'))
+g0 <- g + ggtitle('Cat 0') + 
+  geom_raster(aes(x=x, y=y, fill = cat0.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+g1 <- g + ggtitle('Cat 1') + 
+  geom_raster(aes(x=x, y=y, fill = cat1.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+g2 <- g + ggtitle('Cat 2') + 
+  geom_raster(aes(x=x, y=y, fill = cat2.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+g3 <- g + ggtitle('Cat 3') + 
+  geom_raster(aes(x=x, y=y, fill = cat3.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+g4 <- g + ggtitle('Cat 4') + 
+  geom_raster(aes(x=x, y=y, fill = cat4.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+g5 <- g + ggtitle('Cat 5') + 
+  geom_raster(aes(x=x, y=y, fill = cat5.bin.color)) + 
+  geom_sf(data = conus, fill = NA, color = 'black')
+
+glegend <-
+  data.frame(x = (0:100)/2) %>%
+  mutate(x.bin = cut(x, cuts.grid, include.lowest = TRUE)) %>% 
+  ggplot() + 
+  geom_histogram(aes(x=x, fill = x.bin)) +
+  scale_fill_manual('Annual \nFrequency', values = colors.grid)
+ggarrange(
+  g5, g4, g3, g2, g1, g0, 
+  nrow = 3, ncol = 2, 
+  legend.grob = get_legend(glegend), legend = 'right')
+ggsave('_data/MERRA/ivt/ar_freq_by_cat.png', width = 4, height = 6, units = 'in', dpi = 600)
+
+```
+

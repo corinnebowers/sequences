@@ -1,0 +1,221 @@
+---
+title: "Untitled"
+output: html_document
+date: "2022-09-27"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+# rm(list=ls())
+
+```
+
+# setup 
+
+```{r}
+## load packages & functions
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+cores <- parallel::detectCores()-2
+
+mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
+
+```
+
+# create 3-hr dataframe
+
+## load data
+
+### MERRA metadata
+
+```{r}
+## get hourly/daily timeseries
+ts_merra <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- ts_merra %>% as.Date %>% unique
+
+```
+
+### IVT
+
+```{r}
+## load MERRA IVT
+load('_data/MERRA/ivt/ivt_merra_0928.Rdata')  # ivt_merra, ts_merra
+
+## crop to California
+ivt_ca <- ivt_merra %>% crop(grid_ca)
+rm(ivt_merra)
+
+```
+
+### AR
+
+```{r}
+## load MERRA IVT
+load('_data/MERRA/ivt/ar_merra_0928.Rdata')  # ar_merra, ts_merra
+
+## crop to California
+ar_ca <- ar_merra %>% crop(grid_ca)
+rm(ar_merra)
+
+```
+
+### precipitation
+
+```{r}
+## load MERRA precipitation
+load('_data/MERRA/precip/precip_3hr_0922.Rdata')
+precip_ca <- prcp
+rm(prcp)
+
+```
+
+## combine into dataframe
+
+```{r eval = FALSE}
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+df_3hr <- 
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .export = c('positive', 'lag', 'setNA', 'add_counter', 'create_catalog', 'assign_AR_cat'),
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate')) %dopar% {
+      if (i %in% index_ca) {
+        ## create dataframe for the specified cell
+        index <- rowColFromCell(ar_ca, i)
+        data <- 
+          data.frame(
+            ts = ts_merra,
+            ivt = c(ivt_ca[index[1],index[2],]), 
+            ar = c(ar_ca[index[1],index[2],])==1, 
+            precip = c(precip_ca[index[1],index[2],])) %>%
+          mutate(ar.count = add_counter(ar))
+        
+        ## attach AR catalog information to dataframe
+        catalog <- create_catalog(data, name = 'ar', interval = 3) %>% 
+          filter(duration > 12)
+        data <- data %>% 
+          left_join(
+            catalog %>% setNames(paste('ar', names(.), sep = '.')), 
+            by = 'ar.count')
+        
+        ## attach sequence information to dataframe
+        data <- data %>% 
+          mutate(rolling5 = lag(ivt, 5*8, 'mean', 'center') %>% setNA(.,0)) %>%
+          mutate(seq = rolling5 > 100) %>% 
+          mutate(seq.count = add_counter(seq))
+        sequences <- create_catalog(data, name = 'seq', interval = 3/24, cat = FALSE)
+        data <- data %>% 
+          left_join(
+            sequences %>% setNames(paste('seq', names(.), sep = '.')),
+            by = 'seq.count')
+
+        ## return dataframe
+        data
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+## checkpoint
+
+```{r}
+# ## save out
+# save(df_3hr, file = '_data/_checkpoints/df_3hr_0926.Rdata')
+
+## load from file
+load('_scripts/df_3hr_0926.Rdata')
+
+```
+
+# create daily dataframe
+
+## runoff
+
+```{r}
+## load gridded runoff 
+load('_data/streamflow/runoff_0930.Rdata')
+
+```
+
+## normalized flow
+
+```{r}
+## load gridded normalized streamflow
+load('_data/streamflow/norm_rp2_0930.Rdata')
+
+```
+
+## combine with impacts
+
+```{r}
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+df_24hr <- 
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .export = c('attach_impacts', 'mode'),
+    .packages = c('raster', 'tidyverse', 'lubridate')) %dopar% {
+      if (i %in% index_ca) {
+        ## aggregate 3-hour data
+        data <-
+          df_3hr[[i]] %>% 
+          group_by(date = as.Date(ts)) %>% 
+          summarize(
+            ar = mean(ar) >= 0.25,
+            ar.count = case_when(ar ~ mode(ar.count)),
+            seq = mean(seq) >= 0.25,
+            seq.count = case_when(seq ~ mode(seq.count)),
+            ivt.snap = sample(ivt,1),
+            ivt.max = Max(ivt),
+            precip = Sum(precip))
+        
+        ## attach runoff
+        if (is.null(runoff[[i]])) {
+          data$runoff <- NA
+        } else {
+          data <- data %>% left_join(runoff[[i]] %>% select(date, runoff), by = 'date')
+        }
+
+        ## attach normalized streamflow
+        # left_join(norm_rp2 %>% select(date, rp2, norm_rp2), by = 'date') 
+        
+        ## load impacts data
+        load('_data/impacts/disasters_0922.Rdata')    # FEMA disaster declarations
+        load('_data/impacts/pa_0922.Rdata')           # FEMA public assistance
+        load('_data/impacts/ncei_0922.Rdata')         # NCEI storm events database
+        load('_data/impacts/NFIP_0922.Rdata')         # NFIP claims & policies
+        load('_data/impacts/poprasters_0922.Rdata')   # gridded population
+        load('_data/impacts/wwa_0922.Rdata')          # NWS watches, warnings, & advisories
+  
+        ## attach impacts
+        attach_impacts(data, i)
+        
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+## checkpoint
+
+```{r}
+## save out
+save(df_24hr, file = '_scripts/data_24hr_0930.Rdata') 
+ 
+# ## load from file
+# load('_scripts/data_24hr_0930.Rdata')
+
+```
+

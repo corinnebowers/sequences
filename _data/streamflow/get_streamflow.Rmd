@@ -101,10 +101,10 @@ gages <- gages %>%
 
 ```{r}
 # ## save out
-# save(gages, file = '_data/streamflow/gages_0922.Rdata')
+# save(gages, file = '_data/streamflow/_checkpoints/gages_0922.Rdata')
 
 ## load from file
-load('_data/streamflow/gages_0922.Rdata')
+load('_data/streamflow/_checkpoints/gages_0922.Rdata')
 
 ```
 
@@ -222,8 +222,10 @@ gages_area <- gages_area %>%
       error_nwis_batch < 0.1 ~ 'batch',
       error_api_batch < 0.01 & area_api > mile2feet^2 & area_batch > mile2feet^2 ~ 'either',
       TRUE ~ 'fail'))
-gages_api <- gages_area %>% filter(pass %in% c('both', 'api', 'either')) %>% pull(site_no)
+gages_api <- gages_area %>% filter(pass %in% c('both', 'api')) %>% pull(site_no)
 gages_batch <- gages_area %>% filter(pass == 'batch') %>% pull(site_no)
+
+# table(gages_area$pass)
 
 ```
 
@@ -250,11 +252,11 @@ gages <- gages %>% filter(site_no %in% drainage$site_no)
 ## checkpoint
 
 ```{r}
-## save out
-save(drainage, gages, file = '_data/streamflow/drainage_0928.Rdata')
+# ## save out
+# save(drainage, gages, file = '_data/streamflow/_checkpoints/drainage_0928.Rdata')
 
-# ## load from file
-# load('_data/streamflow/drainage_0928.Rdata')
+## load from file
+load('_data/streamflow/_checkpoints/drainage_0928.Rdata')
 
 ```
 
@@ -262,32 +264,38 @@ save(drainage, gages, file = '_data/streamflow/drainage_0928.Rdata')
 
 The process for downloading streamflow timeseries via Sherlock is as follows:
 
-1. Update `get_flows.sbatch` to reflect the correct gages.Rmd file (use the one filtered to only valid drainage geometries) and the correct number of array instances (number of filtered gages/1,000 = XX).
-2. Run `get_flows.sbatch`, which calls `get_flows.R` and creates XX .Rdata files of streamflow.
+1. Update `get_flows.sbatch` to reflect the correct gages.Rmd file (use the one filtered to only valid drainage geometries) and the correct number of array instances (number of filtered gages/1,000 = 8).
+2. Run `get_flows.sbatch`, which calls `get_flows.R` and creates 8 .Rdata files of streamflow.
 3. Load the results below.
 
 ## load from file 
 
 ```{r}
-# ## load from file
-# flows_save <-
-#   # map(.x = 1:12, .f = ~load(paste0('_data/get_flows/flow', .x, '.Rdata'))) %>%
-#   foreach (i = 1:12) %do% {
-#     load(paste0('_data/get_flows/flow', i, '.Rdata'))
-#     flows
-#   } %>%
-#   lapply(function(x) {
-#     if (nrow(x) == 0) {
-#       x %>% mutate(Flow = NA) %>% select(site_no, dateTime, Flow)
-#     } else {
-#       x %>% select(site_no, dateTime, Flow)
-#     }
-#   }) %>%
-#   reduce(.f = rbind)
-# save(flows_save, file = '_data/_checkpoints/flow_0818.Rdata')
+## load from file
+flows <-
+  foreach (i = 1:8) %do% {
+    load(paste0('_data/streamflow/flows/flow', i, '.Rdata'))
+    flows
+  } %>%
+  lapply(function(x) {
+    if (nrow(x) == 0) {
+      x %>% mutate(Flow = NA) %>% select(site_no, dateTime, Flow)
+    } else {
+      x %>% select(site_no, dateTime, Flow)
+    }
+  }) %>%
+  reduce(rbind)
 
-load('_data/_checkpoints/flow_0818.Rdata')
-flows <- flows_save
+```
+
+## checkpoint
+
+```{r}
+# ## save out 
+# save(flows, file = '_data/streamflow/_checkpoints/flows_0928.Rdata')
+
+## load from file
+load('_data/streamflow/_checkpoints/flows_0928.Rdata')
 
 ```
 
@@ -312,11 +320,15 @@ flows <- flows %>%
   mutate(imputed = ifelse(is.na(Flow), rolling, Flow)) %>% 
   ungroup
 
+flows_save <- flows
+
 ```
 
 ## remove gages with insufficient flow records
 
 ```{r}
+flows <- flows_save
+
 ## get rid of gages with <25% coverage
 coverage25 <- flows %>% 
   filter(include) %>% 
@@ -327,13 +339,18 @@ coverage25 <- flows %>%
 
 flows <- flows %>% filter(site_no %in% coverage25)
 gages <- gages %>% filter(site_no %in% coverage25)
+drainage <- drainage %>% filter(site_no %in% coverage25)
 
 ```
 
 ## checkpoint
 
 ```{r}
-save(flows, gages, file = '_data/get_flows/flows_0928.Rdata')
+# ## save out
+# save(flows, drainage, gages, file = '_data/streamflow/_checkpoints/flows_all_0928.Rdata')
+
+## load from file
+load('_data/streamflow/_checkpoints/flows_all_0928.Rdata')
 
 ```
 
@@ -351,7 +368,7 @@ flows <- flows %>%
 
 ## gut-check numbers
 summary(flows$runoff)
-# flows %>% arrange(desc(runoff)) %>% .[1:100,] %>% 
+# flows %>% arrange(desc(runoff)) %>% .[1:100,] %>%
 #   left_join(gages_area %>% select(site_no, pass), by = 'site_no')
 
 ```
@@ -497,10 +514,467 @@ runoff <-
     } else if (length(huclist) == 1) {
       huc_runoff %>% filter(huc8 == huclist) %>% select(date, runoff)
     } else {
-      hucmatrix <- 
+      hucmatrix <- suppressMessages(
         map_dfc(
           .x = huclist,
           .f = ~huc_runoff %>% filter(huc8 == .x) %>% pull(runoff)
+        ) %>% as.matrix)
+      weightmatrix <- 
+        matrix(
+          data = grid_convert %>% 
+            filter(cell==i) %>% 
+            pull(weight) %>% 
+            rep(each = length(datelist)),
+          nrow = length(datelist), ncol = length(huclist))
+      data.frame(
+        date = datelist,
+        cell = i,
+        runoff = (hucmatrix * weightmatrix) %>% apply(1, Sum))
+    }
+  }
+
+```
+
+## convert gridded runoff list to raster stack
+
+```{r}
+pb <- txtProgressBar(min = 0, max = length(datelist), style = 3)
+runoff_list <- 
+  foreach (d = 1:length(datelist)) %do% {
+    setTxtProgressBar(pb,d)
+    runoff %>% 
+      lapply(function(x) ifelse(is.null(x), NA, x$runoff[d])) %>% 
+      unlist %>% 
+      setValues(grid_ca, .)
+  }
+runoff_ca <- runoff_list %>% reduce(raster::stack)
+
+```
+
+## checkpoint
+
+```{r}
+## save out
+save(runoff, runoff_ca, file = '_data/streamflow/runoff_0930.Rdata')
+
+## load from file
+load('_data/streamflow/runoff_0930.Rdata')
+
+```
+
+
+# calculate normalized streamflow
+
+Peak flow statistics come from USGS StreamStats, which are calculated from the method cited below. 
+
+Gotvald, A.J., Barth, N.A., Veilleux, A.G., and Parrett, Charles, 2012, Methods for determining magnitude and frequency of floods in California, based on data through water year 2006: U.S. Geological Survey Scientific Investigations Report 2012–5113, 38 p., 1 pl.
+
+## download peak flow statistics from batch processor
+
+```{r}
+## figure out what row names mean
+labeldf <- 
+  st_read(file[1], layer = 'FLOWSTATS', quiet = TRUE) %>% 
+  group_by(StatName) %>% 
+  summarize(StatLabel = StatLabel[1]) %>% 
+  separate(StatName, sep = '-', into = c('AEP', NA), remove = FALSE) %>% 
+  mutate(AEP = toNumber(AEP)/100, RP = 1/AEP) %>% 
+  arrange(RP) %>% 
+  mutate(newlabel = paste0('RP', RP))
+
+```
+
+```{r}
+## reload file names for batch processor results
+file_id <- 
+  c('1133046413374416881', 
+    '2133046413629627867', 
+    '3133046413829478084', 
+    '4133046414007610357',
+    '5133046414225956539',
+    '6133046414450338643')
+file <- paste0('_data/streamflow/drainage_batch/gages', file_id, '/gages', file_id, '.gdb')
+
+## pull peak flow statistics (cfs) for available gages
+flowstats1 <- 
+  map_dfr(
+    .x = file,
+    .f = ~st_read(.x, layer = 'FLOWSTATS', quiet = TRUE) %>%
+      mutate(Value = toNumber(Value)) %>%
+      group_by(Name) %>%
+      filter(!('areaave' %in% RegionID) | RegionID == 'areaave') %>%
+      filter(AreaPercent == max(AreaPercent)) %>%
+      pivot_wider(
+        id_cols = 'Name',
+        names_from = 'StatLabel',
+        values_from = 'Value') %>%
+      column_to_rownames('Name') %>%
+      mutate(sumcol = apply(., 1, sum)) %>%
+      filter(sumcol > 0) %>%
+      select(-sumcol) %>%
+      rownames_to_column('site_no'))
+
+```
+
+## download peak flow statistics manually for remaining gages
+
+```{r}
+## identify which gages need to be run manually
+gages$site_no[which(!(gages$site_no %in% flowstats1$site_no))] %>% data.frame(x = .)
+
+```
+
+For the list of gages above, we ran them through the interactive StreamStats online application manually and saved the results as individual files.
+
+note: I've done 220/275 so far (9/30/22)
+
+11335000 11336585 11364300 11372350 11374000
+
+```{r}
+## check drainage geometries for manually downloaded gages
+sites <- list.files('_data/streamflow/flowstats')
+drainage_check <- 
+ map_dfr(
+   .x = sites,
+   .f = ~paste0('_data/streamflow/flowstats/', .x, '/layers/globalwatershed.shp') %>% 
+     st_read(quiet = TRUE) %>% 
+     mutate(site_no = .x)) %>% 
+ st_make_valid %>%
+ st_transform(st_crs(drainage)) %>% 
+ mutate(area_check = toNumber(st_area(.))*meter2feet^2) %>% 
+ select(site_no, area_check) %>% 
+ st_drop_geometry %>% 
+ left_join(drainage %>% st_drop_geometry, by = 'site_no') %>% 
+ mutate(error = (area-area_check)/area)
+drainage_check %>% arrange(desc(error))
+
+## keep only gages where the drainage geometries match results from api & batch
+sites <- drainage_check %>% filter(error <= 0.01) %>% pull(site_no)
+
+```
+
+```{r}
+## load flowstats for manually downloaded gages
+flowstats2 <- 
+  map_dfr(
+    .x = sites,
+    .f = ~paste0('_data/streamflow/flowstats/', .x, '/FLOWSTATS.dbf') %>% 
+      st_read(quiet = TRUE) %>% 
+      mutate(Value = toNumber(Value)) %>%
+      filter(grepl('AEP', Code)) %>% 
+      filter(!('Area-Averaged' %in% Region) | Region == 'Area-Averaged') %>%
+      pivot_wider(
+        id_cols = 'Name',
+        names_from = 'Code',
+        values_from = 'Value') %>% 
+      mutate(Name = .x) %>% 
+      rename(site_no = Name))
+
+```
+
+```{r}
+## combine peak flow stats from batch processor & manual downloads
+all(names(flowstats1) == names(flowstats2))
+flowstats <- rbind(flowstats1, flowstats2)
+
+```
+
+## plot normalized peak ratios
+
+```{r fig.width = 7, fig.height = 4}
+## normalize w.r.t. 2-year peak
+flowstats_norm <- flowstats %>% 
+  column_to_rownames('site_no') %>% 
+  apply(1, function(x) x/x[1]) %>% 
+  t %>% as.data.frame %>% 
+  rownames_to_column('site_no') 
+
+g005 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK20AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('5-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g010 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK10AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('10-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g025 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK4AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('25-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g050 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK2AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('50-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g100 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK1AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('100-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g200 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK0_5AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('200-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+g500 <- ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK0_2AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('500-Year / 2-Year Flow Ratio') + 
+  scale_y_origin()
+
+ggarrange(g005, g010, g050, g100, g200, g500, nrow = 2, ncol = 3)
+
+```
+
+```{r include = FALSE}
+## normalize w.r.t. 10-year peak
+flowstats_norm <- flowstats %>% 
+  column_to_rownames('site_no') %>% 
+  apply(1, function(x) x/x[3]) %>% 
+  t %>% as.data.frame %>% 
+  rownames_to_column('site_no') 
+
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK50AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('2-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK20AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('5-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK4AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('25-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK2AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('50-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK1AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('100-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK0_5AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('200-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+ggplot(flowstats_norm) + 
+  geom_histogram(
+    aes(x = PK0_2AEP), 
+    color = 'black', fill = 'grey90', bins = sqrt(nrow(flowstats_norm))) + 
+  scale_x_continuous('500-Year / 10-Year Return Period Ratio') + 
+  scale_y_origin()
+
+```
+
+```{r}
+flowstats_norm %>% 
+  pivot_longer(cols = -site_no, names_to = 'StatLabel', values_to = 'flow') %>% 
+  left_join(labeldf, by = 'StatLabel') %>% 
+  ggplot() + 
+  geom_vline(xintercept = c(5,10,25,50,100,200,500), color = 'grey90') + 
+  geom_line(aes(x = RP, y = flow, group = site_no), alpha = 0.25) + 
+  scale_x_origin('Return Period (years)') + 
+  scale_y_origin('Streamflow Peak / 2-Year Peak')
+  
+huc4 <- st_read('_data/WBD/WBDHU4.shp', quiet = TRUE)
+flowstats_norm %>% 
+  right_join(gages, ., by = 'site_no') %>% 
+  ggplot() + 
+  geom_sf(data = huc4, fill = NA) + 
+  geom_sf(aes(color = PK0_2AEP)) + 
+  scale_color_scico('100-Year / 2-Year', palette = 'bamako', direction = -1) + 
+  theme_void() + 
+  theme(text = element_text(family = 'Segoe UI'), legend.position = c(0.9,0.7))
+
+```
+
+## normalize streamflow by 2-year peak flows
+Czajkowski, J., Villarini, G., Montgomery, M., Michel-Kerjan, E. O., & Goska, R. (2017). Assessing Current and Future Freshwater Flood Risk from North Atlantic Tropical Cyclones via Insurance Claims. In Nature (Vol. 7). https://doi.org/10.1038/srep41609
+
+```{r}
+flows <- flows %>% 
+  left_join(flowstats %>% transmute(site_no, rp2 = PK50AEP), by = 'site_no') %>% 
+  mutate(norm_rp2 = Flow/rp2)
+
+```
+
+```{r}
+ggplot(flows %>% slice(sample(1:nrow(.), 1e6))) + 
+  geom_point(aes(x = runoff, y = norm_rp2), alpha = 0.25) + 
+  scale_x_origin('Runoff [mm]') + 
+  scale_y_origin('Streamflow / 2-Year Peak []')
+
+```
+
+# calculate spatially averaged normalized streamflow estimates
+https://waterwatch.usgs.gov/index.php?id=romap3
+https://waterwatch.usgs.gov/wwhelps/?hid=huc_runoff_detail&print=1
+
+## calculate area-based weight for each gage
+
+```{r}
+## calculate area for drainage geometries
+poly1 <- drainage %>% 
+  left_join(flowstats %>% select(site_no), by = 'site_no') %>% 
+  st_make_valid %>% 
+  mutate(area.1 = toNumber(st_area(.)))
+
+## calculate area for HUC8 watersheds (same as above)
+# huc8 <- st_read('_data/WBD/WBDHU8.shp', quiet = TRUE)
+# poly2 <- huc8 %>%
+#   select(huc8) %>%
+#   mutate(area.2 = toNumber(st_area(.))) %>%
+#   st_transform(st_crs(poly1))
+
+## calculate area for each intersecting piece
+binary <- st_intersects(poly1, poly2)
+lookup <- 
+  foreach (i = 1:length(binary), .combine = 'rbind') %do% {
+    suppressWarnings(
+      map_dfr(.x = binary[[i]], .f = ~st_intersection(poly1[i,], poly2[.x,]))
+    )
+  }
+
+## calculate weights by space & time based on USGS method
+lookup <- lookup %>% 
+  mutate(area.intersect = toNumber(st_area(.))) %>% 
+  st_drop_geometry %>%
+  left_join(
+    poly1 %>% st_drop_geometry %>% select(site_no), .,
+    by = 'site_no') %>%
+  left_join(
+    poly2 %>% st_drop_geometry %>% select(huc8), .,
+    by = 'huc8') %>% 
+  mutate(
+    prop.1 = toNumber(area.intersect/area.1),
+    prop.2 = toNumber(area.intersect/area.2),
+    prop.total = prop.1 * prop.2) %>% 
+  group_by(huc8) %>% 
+  mutate(weight = prop.total/Sum(prop.total)) %>% 
+  filter(weight > 0.001) %>% 
+  mutate(weight = prop.total/Sum(prop.total)) %>% 
+  ungroup %>% 
+  transmute(huc = huc8, site_no, prop.total)
+
+```
+
+## calculate weighted average runoff by HUC8 
+
+```{r}
+datelist <- seq(ymd('1980-01-01'), ymd('2021-12-31'), 'days')
+huc8_norm_rp2 <- 
+  foreach(
+    i = 1:nrow(huc8)) %do% {
+      gagelist <- lookup %>% filter(huc == huc8$huc8[i]) %>% pull(site_no)
+      
+      if (length(gagelist) == 0) {
+        ## no data is available
+        norm_rp2 <- rep(NA, length(datelist))
+        
+      } else if (length(gagelist) == 1) {
+        ## assign single gage to HUC8
+        norm_rp2 <- flows %>% 
+          filter(site_no %in% gagelist) %>% 
+          arrange(dateTime) %>% 
+          pull(norm_rp2)
+        
+      } else {
+        ## calculate weighted average of multiple gages
+        flowmatrix <- flows %>% 
+          filter(site_no %in% gagelist) %>% 
+          arrange(dateTime) %>% 
+          pivot_wider(
+            id_cols = 'dateTime', names_from = 'site_no', values_from = 'norm_rp2') %>% 
+          select(-dateTime) %>% 
+          as.matrix
+        weightlist <- lookup %>% filter(huc == huc8$huc8[i]) %>% pull(prop.total)
+        weightmatrix <- 
+          matrix(
+            data = rep(weightlist, each = length(datelist)), 
+            nrow = length(datelist), ncol = length(gagelist))
+        weightmatrix[is.na(flowmatrix)] <- NA
+        weightmatrix <- weightmatrix %>% apply(1, function(x) x/Sum(x)) %>% t
+        
+        ## assign weighted average to HUC8
+        norm_rp2 <- (flowmatrix * weightmatrix) %>% apply(1, Sum)
+      }
+      data.frame(date = datelist, huc8 = huc8$huc8[i], norm_rp2)
+    } %>% 
+  reduce(rbind)
+
+```
+
+## regionalize and impute missing data by HUC4
+
+```{r}
+huc_norm_rp2 <- huc8_norm_rp2 %>% 
+  mutate(huc4 = str_sub(huc8, 1, 4)) %>% 
+  group_by(date, huc4) %>% 
+  mutate(norm_rp2_avg = Mean(norm_rp2)) %>% 
+  mutate(norm_rp2 = ifelse(is.na(norm_rp2), norm_rp2_avg, norm_rp2)) %>% 
+  ungroup
+
+```
+
+## convert to match MERRA grid
+
+```{r}
+## get conversion weights from huc8 --> grid
+grid_convert <- grid_ca %>% 
+  rasterToPolygons() %>% 
+  st_as_sf %>%
+  rename(cell = layer) %>% 
+  st_transform(st_crs(huc8)) %>%
+  mutate(area.grid = toNumber(st_area(.))) %>% 
+  st_intersection(huc8 %>% select(huc8)) %>% 
+  mutate(area.intersect = toNumber(st_area(.))) %>% 
+  st_drop_geometry %>% 
+  mutate(prop = area.intersect/area.grid) %>% 
+  group_by(cell) %>% 
+  mutate(weight = prop/Sum(prop)) %>% 
+  select(cell, huc8, weight) %>% 
+  arrange(cell) %>% 
+  ungroup
+
+```
+
+```{r}
+## use conversion weights to list normalized streamflow by grid cell
+norm_rp2 <- 
+  foreach (i = 1:ncell(grid_ca)) %do% {
+    huclist <- grid_convert %>% filter(cell==i) %>% pull(huc8)
+    if (length(huclist) == 0) {
+      NULL
+    } else if (length(huclist) == 1) {
+      huc_norm_rp2 %>% filter(huc8 == huclist) %>% select(date, norm_rp2)
+    } else {
+      hucmatrix <- 
+        map_dfc(
+          .x = huclist,
+          .f = ~huc_norm_rp2 %>% filter(huc8 == .x) %>% pull(norm_rp2)
         ) %>% as.matrix
       weightmatrix <- 
         matrix(
@@ -512,57 +986,15 @@ runoff <-
       data.frame(
         date = datelist,
         cell = i,
-        runoff = (hucmatrix * weightmatrix) %>% apply(1, Sum))
+        norm_rp2 = (hucmatrix * weightmatrix) %>% apply(1, Sum))
     }
   }
 
 ```
 
-# calculate normalized streamflow
+## checkpoint 
 
 ```{r}
-## pull peak flow statistics (cfs) for available gages
-temp <- map_dfr(
-  .x = file,
-  .f = ~st_read(.x, layer = 'FLOWSTATS', quiet = TRUE) %>%
-    mutate(Value = toNumber(Value)) %>%
-    group_by(Name) %>%
-    filter(!('areaave' %in% RegionID) | RegionID == 'areaave') %>%
-    filter(AreaPercent == max(AreaPercent)) %>%
-    pivot_wider(
-      id_cols = 'Name',
-      names_from = 'StatLabel',
-      values_from = 'Value') %>%
-    column_to_rownames('Name') %>%
-    mutate(sumcol = apply(., 1, sum)) %>%
-    filter(sumcol > 0) %>%
-    select(-sumcol) %>%
-    rownames_to_column('site_no'))
-
-temp %>% filter(site_no %in% gages$site_no)
-383/nrow(gages)
-
-nrow(gages) - 383
-
 
 ```
 
-
-```{r}
-## figure out what row names mean
-temp2 <- 
-  st_read(file[1], layer = 'FLOWSTATS', quiet = TRUE) %>% 
-  group_by(StatName) %>% 
-  summarize(StatLabel = StatLabel[1])
-
-temp2 %>% 
-  separate(StatName, sep = '-', into = c('AEP', NA), remove = FALSE) %>% 
-  mutate(AEP = toNumber(AEP)/100, RP = 1/AEP) %>% 
-  arrange(RP) %>% 
-  mutate(newlabel = paste0('RP', RP))
-
-```
-
-
-
-# calculate spatially averaged normalized streamflow estimates
