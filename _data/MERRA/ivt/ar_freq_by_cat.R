@@ -1,4 +1,10 @@
 
+###################################################################################################
+## ar_freq_by_cat.R: This script replicates Fig. 6 from "A scale to characterize the strength and 
+## impacts of atmospheric rivers" (Ralph et al., 2019) to ensure that data was downloaded correctly.
+## Created by Corinne Bowers 9/28/22
+###################################################################################################
+
 #### setup ########################################################################################
 
 ## set working directory

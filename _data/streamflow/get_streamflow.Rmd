@@ -538,16 +538,16 @@ runoff <-
 ## convert gridded runoff list to raster stack
 
 ```{r}
-pb <- txtProgressBar(min = 0, max = length(datelist), style = 3)
-runoff_list <- 
-  foreach (d = 1:length(datelist)) %do% {
-    setTxtProgressBar(pb,d)
-    runoff %>% 
-      lapply(function(x) ifelse(is.null(x), NA, x$runoff[d])) %>% 
-      unlist %>% 
-      setValues(grid_ca, .)
-  }
-runoff_ca <- runoff_list %>% reduce(raster::stack)
+# pb <- txtProgressBar(min = 0, max = length(datelist), style = 3)
+# runoff_list <- 
+#   foreach (d = 1:length(datelist)) %do% {
+#     setTxtProgressBar(pb,d)
+#     runoff %>% 
+#       lapply(function(x) ifelse(is.null(x), NA, x$runoff[d])) %>% 
+#       unlist %>% 
+#       setValues(grid_ca, .)
+#   }
+# runoff_ca <- runoff_list %>% reduce(raster::stack)
 
 ```
 
@@ -624,9 +624,9 @@ gages$site_no[which(!(gages$site_no %in% flowstats1$site_no))] %>% data.frame(x 
 
 ```
 
-For the list of gages above, we ran them through the interactive StreamStats online application manually and saved the results as individual files.
+For the list of gages above, we ran each one through the interactive StreamStats online application manually and saved the results as individual files.
 
-note: I've done 220/275 so far (9/30/22)
+note: I've done 240/275 so far (9/30/22)
 
 11335000 11336585 11364300 11372350 11374000
 
@@ -649,6 +649,7 @@ drainage_check <-
 drainage_check %>% arrange(desc(error))
 
 ## keep only gages where the drainage geometries match results from api & batch
+# drainage_check %>% arrange(desc(error))
 sites <- drainage_check %>% filter(error <= 0.01) %>% pull(site_no)
 
 ```
@@ -843,11 +844,11 @@ poly1 <- drainage %>%
   mutate(area.1 = toNumber(st_area(.)))
 
 ## calculate area for HUC8 watersheds (same as above)
-# huc8 <- st_read('_data/WBD/WBDHU8.shp', quiet = TRUE)
-# poly2 <- huc8 %>%
-#   select(huc8) %>%
-#   mutate(area.2 = toNumber(st_area(.))) %>%
-#   st_transform(st_crs(poly1))
+huc8 <- st_read('_data/WBD/WBDHU8.shp', quiet = TRUE)
+poly2 <- huc8 %>%
+  select(huc8) %>%
+  mutate(area.2 = toNumber(st_area(.))) %>%
+  st_transform(st_crs(poly1))
 
 ## calculate area for each intersecting piece
 binary <- st_intersects(poly1, poly2)
@@ -971,18 +972,18 @@ norm_rp2 <-
     } else if (length(huclist) == 1) {
       huc_norm_rp2 %>% filter(huc8 == huclist) %>% select(date, norm_rp2)
     } else {
-      hucmatrix <- 
+      hucmatrix <- suppressMessages(
         map_dfc(
           .x = huclist,
           .f = ~huc_norm_rp2 %>% filter(huc8 == .x) %>% pull(norm_rp2)
-        ) %>% as.matrix
+        ) %>% as.matrix)
       weightmatrix <- 
         matrix(
           data = grid_convert %>% 
             filter(cell==i) %>% 
             pull(weight) %>% 
             rep(each = length(datelist)),
-          nrow = length(datelist), ncol = length(convert))
+          nrow = length(datelist), ncol = length(huclist))
       data.frame(
         date = datelist,
         cell = i,
@@ -995,6 +996,8 @@ norm_rp2 <-
 ## checkpoint 
 
 ```{r}
+## save out
+save(norm_rp2, file = '_data/streamflow/norm_rp2_1002.Rdata')
 
 ```
 

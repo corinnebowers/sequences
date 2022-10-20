@@ -1,19 +1,12 @@
 
 ###################################################################################################
+## create_df_functions.R: This script contains functions to support the file create_df.Rmd.
+## Created by Corinne Bowers 9/28/22
+## Last updated 10/19/22
+###################################################################################################
 
-#' add_counter2 <- function(ar) {
-#'   #' Creates a vector of ordered indices to distinguish sequences of true values.
-#'   #' @param ar vector of true/false values
-#'   #' @return vector of numbers (where ar=true) and NA (where ar=false)
-#' 
-#'   counter <- 0
-#'   foreach (i = 1:length(ar), .combine = 'c') %do% {
-#'     if (ar[i]) {
-#'       if (i==1 | !ar[i-1]) counter <- counter+1
-#'       counter
-#'     } else NA
-#'   }
-#' }
+
+###################################################################################################
 
 add_counter <- function(ar) {
   #' Creates a vector of ordered indices to distinguish sequences of true values.
@@ -21,12 +14,11 @@ add_counter <- function(ar) {
   #' @return vector of numbers (where ar=true) and NA (where ar=false)
   
   ## identify when the vector changes from true to false
-  index <- which(ar)
-  change <- rep(0, length(ar))
-  change[index][which(c(0,diff(index))>1)] <- 1
-  
+  change <- rep(0,length(ar))
+  change[which(c(0,diff(ar))>0)] <- 1
+
   ## convert changepoints to event indices
-  count <- cumsum(change)+1
+  count <- cumsum(change)
   count[!ar] <- NA
   return(count)
   }
@@ -136,3 +128,86 @@ attach_impacts <- function(daily, i) {
   ## return dataframe
   return(daily)
 }
+
+
+#### functions: inflation #########################################################################
+
+download_bls <- function() {
+  ## downloads CPI data from Bureau of Labor Statistics
+  read.table(
+    'https://download.bls.gov/pub/time.series/cu/cu.data.2.Summaries',
+    sep = '\t', header = TRUE) %>%
+    filter(grepl('CUUR0000SA0', series_id)) %>% 
+    separate(period, into = c('period', 'month'), sep = 1, remove = TRUE) %>% 
+    mutate(month = toNumber(month)) %>%
+    filter(period == 'M' & month %in% 1:12) %>% 
+    transmute(year, month, cpi = value)
+}
+
+calculate_inflation <- function(yr, mo = 0, ref_yr, ref_mo = 0, bls = download_bls()) {
+  ## finds inflation rate relative to some reference period 
+  #' yr: year of current data
+  #' mo: month of current data (0 takes annual average)
+  #' ref_yr: year that the data should be converted to 
+  #' ref_mo: month that the data should be converted to (0 takes annual average)
+  
+  if (ref_mo == 0) {
+    cpi_ref <- bls %>% 
+      group_by(year) %>% 
+      summarize(cpi_avg = mean(cpi)) %>%
+      filter(year == ref_yr) %>% 
+      pull(cpi_avg)
+  } else {
+    cpi_ref <- bls %>% 
+      filter(year == ref_yr & month == ref_mo) %>% 
+      pull(cpi)
+  }
+  
+  ## find CPI for period of interest
+  if (mo == 0) {
+    cpi <- bls %>% 
+      group_by(year) %>% 
+      summarize(cpi_avg = mean(cpi)) %>%
+      filter(year == yr) %>% 
+      pull(cpi_avg)
+  } else {
+    cpi <- bls %>% 
+      filter(year == yr & month == mo) %>% 
+      pull(cpi)
+  }
+  
+  ## find value of a dollar in period of interest r.t. reference period
+  cpi_ref/cpi
+}
+
+
+#### functions: gridded population ################################################################
+
+gridpop <- function(pop, grid, fact = 10, error = TRUE) {
+  ## produces gridded population estimates from polygons
+  #' pop: sf polygon dataframe with the column pop
+  #' grid: raster grid to aggregate to
+  #' fact: integer determining how precise calculations should be 
+  #' error: logical determining whether to report conversion error
+  
+  pop <- pop %>% 
+    mutate(area = units::drop_units(st_area(.))) %>% #m^2
+    mutate(density = pop/area)
+  grid <- grid %>% 
+    setValues(1) %>% 
+    disaggregate(fact)
+  dens <- rasterize(pop, grid, field = 'density', fun = 'mean', background = 0)
+  cell <- cellSize(rast(grid), unit = 'm') %>% raster
+  
+  popraster <- dens*cell
+  if (error) {
+    pct_error <- abs(Sum(pop$pop) - Sum(popraster[])) / Sum(pop$pop)
+    cat('\n')
+    print(paste0('Percent Error: ', percent(pct_error, accuracy = 0.01)))
+  }
+  popraster <- popraster * Sum(pop$pop) / Sum(popraster[])
+  popraster <- aggregate(popraster, fact) * fact^2
+  
+  return(popraster)
+}
+

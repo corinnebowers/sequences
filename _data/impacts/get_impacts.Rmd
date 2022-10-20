@@ -3,9 +3,18 @@ title: "get_impacts"
 output: html_document
 author: Corinne Bowers
 date: '2022-06-16'
+theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
 ---
 
-this file downloads & processes the impacts data included in df_merra
+This script downloads & processes the impacts data included in $df_3hr$ and $df_24hr$, including:
+
+* FEMA disaster declarations,
+* FEMA public assistance records,
+* NCEI storm events database,
+* NFIP claims & policies,
+* gridded population, and
+* NWS watches, warnings, & advisories.
 
 ```{r setup, include = FALSE}
 knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
@@ -291,6 +300,8 @@ https://www.ftb.ca.gov/file/business/deductions/disaster-codes.html
 https://dot.ca.gov/programs/local-assistance/fed-and-state-programs/emergency-relief-program/declarations
 https://www.federalregister.gov/documents/2019/06/18/2019-12852/california-major-disaster-and-related-determinations
 https://www.ca.gov/archive/gov39/2017/02/page/4/index.html
+
+conclusion: not a good dataset, because they do not have physically relevant end dates
 
 ## NCEI storm event database
 
