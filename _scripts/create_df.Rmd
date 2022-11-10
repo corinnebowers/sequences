@@ -11,6 +11,7 @@ This script creates $df_3hr$ and $df_24hr$, datasets of hazard and impact for al
 
 ```{r setup, include = FALSE}
 knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
 # knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
 # rm(list=ls())
@@ -77,6 +78,14 @@ rm(prcp)
 
 ```
 
+### soil moisture
+
+```{r}
+## load WLDAS soil moisture
+load('_data/WLDAS/sm_stack_1109.Rdata')
+
+```
+
 ## combine into dataframe
 
 ```{r}
@@ -104,6 +113,16 @@ df_3hr <-
             ar = c(ar_ca[index[1],index[2],])==1, 
             precip = c(precip_ca[index[1],index[2],])) %>%
           mutate(ar.count = add_counter(ar))
+        
+        ## add soil moisture data
+        data.sm <- 
+          data.frame(
+            date = dates_merra,
+            sm = c(sm_stack[index[1],index[2],]))
+        data <- data %>% 
+          mutate(date = as.Date(ts_merra)) %>% 
+          left_join(data.sm, by = 'date') %>% 
+          select(-date)
         
         ## attach AR catalog information to dataframe
         catalog <- 
@@ -154,10 +173,10 @@ Sys.time() - start
 
 ```{r}
 ## save out
-save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1002.Rdata')
+save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1109.Rdata')
 
 # ## load from file
-# load('_scripts/_checkpoints/df_3hr_1002.Rdata')
+# load('_scripts/_checkpoints/df_3hr_1109.Rdata')
 
 ```
 

@@ -1,2 +1,14 @@
+## general
 _data/_old/
 **.Rdata
+
+## _data/GFDL
+_data/GFDL/raw/*.log
+_data/GFDL/raw/instructions.tst
+_data/GFDL/ivt_infill.Rmd
+_data/GFDL/summarize_GFDL*
+
+## _data/MERRA
+_data/MERRA/ivt/ar_freq_by_cat*
+_data/MERRA/ivt/files/
+_data/MERRA/precip/files/

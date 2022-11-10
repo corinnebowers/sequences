@@ -13,7 +13,7 @@ add_counter <- function(ar) {
   #' @param ar vector of true/false values
   #' @return vector of numbers (where ar=true) and NA (where ar=false)
   
-  ## identify when the vector changes from true to false
+  ## identify changepoints when the vector goes from false to true
   change <- rep(0,length(ar))
   change[which(c(0,diff(ar))>0)] <- 1
 
@@ -23,17 +23,16 @@ add_counter <- function(ar) {
   return(count)
   }
 
-# all(setNA(add_counter(ar),0) == setNA(add_counter2(ar),0))
-
 
 ###################################################################################################
 
 create_catalog <- function(df, name, cat = TRUE, interval = 3) {
   #' Creates a catalog of events.
-  #' @param df dataframe with column ts (datetime), ar (logical), and ivt (double)
+  #' @param df dataframe with column ts (datetime), [name] (logical), and ivt (double)
   #' @param name name of the column to base events on 
   #' @param cat logical indicating whether to calculate AR intensity categories
-  #' @param interval temporal resolution of the dataframe, in hours
+  #' @param interval temporal resolution of the dataframe, in the units you want "duration" to be in
+  #'   (should be hours if cat=TRUE)
   #' @return dataframe of AR events with columns ar (integer), start (datetime), end (datetime), 
   #'   ivt_max (double), duration (double), and cat (integer)
   

@@ -1,0 +1,73 @@
+---
+title: "get_sm"
+output: html_document
+date: "2022-10-29"
+---
+
+This file takes the soil moisture .tif files created in Sherlock and saves them as the raster stack $sm_stack$. 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'D:/2-sequences')
+
+```
+
+# setup 
+
+```{r}
+source('_data/setup.R')
+
+```
+
+```{r}
+## check if all files are downloaded
+
+datelist <- seq(ymd('1980-01-01'), ymd('2021-12-31'), by = 'days')
+
+smlist <- list.files('_data/WLDAS/files') %>% 
+  str_split('_') %>% lapply(function(x) x[[3]]) %>% reduce(c) %>% 
+  str_split('\\.') %>% lapply(function(x) x[[1]]) %>% reduce(c) %>% 
+  ymd_hm %>% as.Date
+
+data.frame(date = datelist) %>% 
+  left_join(data.frame(date = smlist, avail = TRUE), by = 'date') %>% 
+  mutate(avail = ifelse(is.na(avail), FALSE, avail)) %>% 
+  mutate(year = year(date), const = date - years(year-2000)) %>% 
+  ggplot() + 
+  geom_tile(aes(x = const, y = year, fill = avail)) + 
+  scale_fill_manual(values = c('midnightblue', 'lightsteelblue1')) + 
+  scale_x_date(
+    date_labels = '%b', date_breaks = '1 month',
+    expand = expansion(mult = c(0,0))) + 
+  scale_y_reverse(expand = expansion(mult = c(0.01,0.01)))
+
+```
+
+
+```{r}
+## once all files are downloaded, save to raster stack and read into memory
+
+filelist <- list.files('_data/WLDAS/files', full.names = TRUE)
+
+# cl <- parallel::makeCluster(cores)
+# registerDoSNOW(cl)
+# pb <- txtProgressBar(min = 0, max = length(filelist), style = 3)
+# sm_list <- 
+#   foreach (
+#     file = filelist,
+#     .options.snow = opts,
+#     .export = 'raster.df',
+#     .packages = c('raster', 'tidyverse')) %dopar% {
+#       raster(file) %>% raster.df %>% rasterFromXYZ(crs = crs(grid_ca))
+#     }
+# stopCluster(cl)
+load('_data/WLDAS/sm_list_1109.Rdata')
+
+start <- Sys.time()
+sm_stack <- sm_list %>% do.call('stack', .)
+save(sm_stack, file = '_data/WLDAS/sm_stack_1109.Rdata')
+Sys.time() - start
+
+```
+
+

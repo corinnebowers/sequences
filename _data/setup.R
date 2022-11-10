@@ -178,6 +178,35 @@ grid_county <- grid %>%
   aggregate(fact, 'modal')
 
 
+#### watersheds ###################################################################################
+
+## load HUC4 watersheds
+huc4 <- st_read('D:/2-sequences/_data/WBD/WBDHU4.shp', quiet = TRUE)
+huc4 <- huc4 %>% 
+  mutate(huc4 = toNumber(huc4)) %>% 
+  arrange(huc4)
+colors.huc <- scico(11, palette = 'roma')[-6]
+
+## calculate representative cells
+grid_hucrep <- grid_ca
+grid_hucrep[] <- 0
+for (huc in 1:10) {
+  ## choose based on HUC4 centroid
+  id <- grid_ca %>% 
+    raster::extract(huc4[huc,] %>% st_centroid %>% st_transform(crs(grid_ca)))
+  grid_hucrep[id] <- huc+1800
+}
+
+## find out which HUC4 covers the majority of each cell
+fact <- 100
+grid_huc4 <- grid %>% 
+  crop(california, snap = 'out') %>% 
+  disaggregate(fact) %>% 
+  rasterize(huc4 %>% mutate(huc4 = toNumber(huc4)), ., field = 'huc4') %>%
+  aggregate(fact, 'modal')
+
+
+
 #### functions: AR catalog ########################################################################
 
 calculate_duration <- function(df, int = 3) {
