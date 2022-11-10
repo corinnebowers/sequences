@@ -2,6 +2,7 @@
 ###################################################################################################
 ## get_sm.R: This script retrieves soil moisture data from NASA WLDAS.
 ## Created by Corinne Bowers 10/21/22
+## Last updated 10/27/22
 ###################################################################################################
 
 #### setup ########################################################################################
@@ -47,46 +48,48 @@ wldas_to_raster <- function(x) {
 #### get soil moisture ############################################################################
 cat('downloading soil moisture...\n') 
 
+start <- Sys.time()
 pb <- txtProgressBar(min = 0, max = 42*12, style = 3)
 cl <- parallel::makeCluster(cores)
 registerDoSNOW(cl)
 sm <- 
-  foreach (yr = 1981:2021, .inorder = FALSE) %:%
+  foreach (yr = 2010:2021, .inorder = FALSE) %:%   ### 1980:2021
   foreach (
     mo = 1:12, 
+    .combine = 'c',
     .inorder = FALSE,
-    .packages = c('raster', 'foreach', 'rvest', 'lubridate', 'tidyverse'),
+    .packages = c('raster', 'ncdf4', 'foreach', 'rvest', 'lubridate', 'tidyverse'),
     .export = 'wldas_to_raster',
     .options.snow = opts) %dopar% {
-      links <- paste0(url, yr, str_pad(mo,2,pad ='0')) %>% 
+      files <- paste0(url, yr, str_pad(mo,2,pad ='0')) %>% 
         read_html %>% html_elements('a') %>% html_text()
-      links <- links[grepl('.nc', links)]
+      files <- files[grepl('.nc', files)]
     
-      foreach (link = links) %do% {
-        tryCatch({
-          ## download file
-          download.file(
-            url = paste0(url, yr, str_pad(mo,2,pad ='0'), '/', link),
-            destfile = paste0('_data/WLDAS/files/', link),
-            quiet = TRUE)
-        
-          ## extract useful information
-          nc <- nc_open(paste0('_data/WLDAS/files/', link))
-          sm <- ncvar_get(nc, 'SoilMoist_tavg') %>% wldas_to_raster(.)
-          nc_close(nc)
-        
-          ## return data
-          list(sm, link)
-        }, error = link)
+      options(timeout = 3600)
+      foreach (file = files) %do% {
+        ## download file
+        filepath <- paste0('_data/WLDAS/files/', file)
+        try({
+          if (!file.exists(filepath)) {
+            download.file(
+              url = paste0(url, yr, str_pad(mo,2,pad ='0'), '/', file),
+              destfile = filepath)
+          }     
+
+          sm_name <- paste0('_data/WLDAS/files_sm/', str_remove(file, '\\.nc'), '.tif')  
+          if (!file.exists(sm_name)) {
+            nc <- nc_open(filepath)
+            sm <- ncvar_get(nc, 'SoilMoist_tavg') %>% wldas_to_raster(.)
+            nc_close(nc)
+            writeRaster(sm, filename = sm_name)
+          }
+        })
+        return(0)
       }
     }
 stopCluster(cl)
-
-## checkpoint
-save(sm, file = '_data/WLDAS/sm_checkpoint.Rdata')
-
-
-#### convert to raster stack ######################################################################
+cat('\n')
+Sys.time() - start
 
 
 ###################################################################################################

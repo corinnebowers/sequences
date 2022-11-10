@@ -3,14 +3,13 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=cbowers@stanford.edu
 #SBATCH --partition=cee
-#SBATCH --time=12:00:00
+#SBATCH --time=1-00:00:00
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=100G
+#SBATCH --mem=200G
 #SBATCH --output=get_sm.log
 
 ## load modules
 ml R/4.1.2
-ml openssl curl
 ml physics
 ml proj gdal geos udunits
 
