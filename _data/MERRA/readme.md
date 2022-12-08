@@ -3,17 +3,25 @@
 This folder contains code to retrieve integrated water vaport transport
 (IVT) and precipitation data from the Modern-Era Retrospective Analysis
 for Research and Applications, Version 2 (MERRA-2) by the National
-Aeronautics and Space Agency (NASA)[1].
+Aeronautics and Space Agency (NASA) [1].
 
 Within the `ivt` folder, the file `get_ivt_ar.Rdata` downloads IVT data
 that were calculated by Jonathan Rutz as a function of wind speed and
-specific humidity[2]. Data are available at
+specific humidity [2]. Data are available at
 <ftp://sioftp.ucsd.edu/CW3E_DataShare/Rutz_AR_Catalog>. The file
 `ar_freq_by_cat.R` creates the figure below, which replicates Fig. 6
-from Ralph et al. (2019)[3] to ensure that the data were loaded and
+from Ralph et al. (2019) [3] to ensure that the data were loaded and
 transformed correctly.
 
-Within the `precip` folder, the file Precipitation data are available
+<img src="readme_files/figure-markdown_strict/unnamed-chunk-2-1.png" style="display: block; margin: auto;" />
+
+Precipitation data are available from the Goddard Earth Sciences Data
+and Information Services Center (GES DISC) at
+<https://disc.gsfc.nasa.gov/>. Within the `precip` folder, the file
+`get_precipitation.Rmd` contains instructions for download and processes
+data for the study area.
+
+<br>
 
 [1] Gelaro, R., McCarty, W., Suárez, M. J., Todling, R., Molod, A.,
 Takacs, L., Randles, C. A., Darmenov, A., Bosilovich, M. G., Reichle,
