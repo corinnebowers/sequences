@@ -1,0 +1,365 @@
+---
+title: "create_df_gfdl"
+output: html_document
+date: "2022-11-15"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+# rm(list=ls())
+
+```
+
+# setup 
+
+```{r}
+## load packages & functions
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+# cores <- parallel::detectCores()-2
+
+mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
+
+```
+
+```{r}
+calculate_sequences <- function(data, data_hist, window = 5, startend = 0.5, magcutoff = 250) {
+  #' Creates a catalog of sequences.
+  #' @param df dataframe with columns date (date) & ivt (double)
+  #' @param window integer parameter specifying the width of the rolling average, in days
+  #' @param startend double parameter specifying the quantile to use as the start/end threshold 
+  #' @param magcutoff double parameter specifying the magnitude cutoff for including sequences
+
+  ## calculate start-end threshold
+  threshold <- data_hist %>%
+    filter(wateryear(date) %in% 1981:2010) %>%
+    pull(ivt) %>% 
+    quantile(startend, na.rm = TRUE)
+  
+  ## calculate sequences
+  data <- data %>% 
+    mutate(
+      rolling5 = lag(ivt, window, 'mean', 'center') %>% setNA(.,0),
+      seq = rolling5 > threshold,
+      seq.count = add_counter(seq)) %>%
+    transmute(ts = date, ivt_24hr = ivt, ivt = rolling5, seq, seq.count)
+  sequences <- data %>%
+    create_catalog(., name = 'seq', interval = 1, cat = FALSE) %>%
+    rename(maxrolling = maxivt) %>%
+    filter(maxrolling > magcutoff) %>%
+    left_join(data, by = c('count' = 'seq.count')) %>% 
+    group_by(count) %>% 
+    summarize(
+      start_date = as.Date(start[1]), 
+      maxrolling = maxrolling[1], 
+      duration = duration[1], 
+      maxivt = max(ivt_24hr))
+  return(sequences)
+}
+
+```
+
+# load data
+
+## GFDL AR
+
+```{r}
+## GFDL historic
+ar_hist_list <- foreach (i = 1:5) %do% {
+  load(paste0('_data/GFDL/raw/files/ar_hist_ens0', i, '.Rdata'))
+  if (i==1) ar_hist_ens01 else ar_hist
+} %>% lapply(function(x) crop(x, grid_ca))
+
+## GFDL SSP 2-4.5
+ar_ssp245_list <- foreach (i = 1:5) %do% {
+  load(paste0('_data/GFDL/raw/files/ar_ssp245_ens0', i, '.Rdata'))
+  if (i==1) ar_ssp245_ens01 else ar_ssp245
+} %>% lapply(function(x) crop(x, grid_ca))
+
+## GFDL SSP 5-8.5
+ar_ssp585_list <- foreach (i = 1:5) %do% {
+  load(paste0('_data/GFDL/raw/files/ar_ssp585_ens0', i, '.Rdata'))
+  if (i==1) ar_ssp585_ens01 else ar_ssp585
+} %>% lapply(function(x) crop(x, grid_ca))
+
+rm(ar_hist, ar_hist_ens01, ar_ssp245, ar_ssp245_ens01, ar_ssp585, ar_ssp585_ens01)
+
+```
+
+```{r}
+## convert to match IVT format
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+ar_hist <- 
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'tidyverse', 'foreach'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'cbind') %do% {
+          temp <- ar_hist_list[[ens]] %>% raster::extract(i) %>% c
+          temp > 0
+        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+      } else NULL
+    }
+cat('\n')
+ar_ssp245 <- 
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'tidyverse', 'foreach'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'cbind') %do% {
+          temp <- ar_ssp245_list[[ens]] %>% raster::extract(i) %>% c
+          temp > 0
+        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+      } else NULL
+    }
+cat('\n')
+ar_ssp585 <- 
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'tidyverse', 'foreach'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'cbind') %do% {
+          temp <- ar_ssp585_list[[ens]] %>% raster::extract(i) %>% c
+          temp > 0
+        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+      } else NULL
+    }
+stopCluster(cl)
+
+```
+
+## GFDL IVT
+
+```{r}
+load('_data/GFDL/biascorr/files/ivt_hist_sdm.Rdata')
+load('_data/GFDL/biascorr/files/ivt_ssp245_sdm.Rdata')
+load('_data/GFDL/biascorr/files/ivt_ssp585_sdm.Rdata')
+
+```
+
+## GFDL metadata
+
+```{r}
+load('_data/GFDL/gfdl_metadata.Rdata')
+ts_decades <- data.frame(ts = ts_future) %>% 
+  filter(year(ts) > 2020 & year(ts) <= 2090) %>% 
+  pull(ts)
+
+```
+
+# create dataframes
+
+## historic
+
+```{r}
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+df_hist <-
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'foreach', 'lubridate', 'tidyverse'),
+    .export = 
+      c('setNA', 'wateryear', 'add_counter', 'create_catalog',
+        'assign_AR_cat', 'calculate_sequences'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'rbind') %do% {
+          ## create dataframe
+          data <- data.frame(
+            ts = ts_hist, 
+            ar = ar_hist[[i]][,ens], 
+            ivt = ivt_hist_sdm[[i]][,ens]) %>% 
+            mutate(ar.count = add_counter(ar))
+          if (all(is.na(data$ivt))) NULL else {
+            ## attach AR catalog information
+            catalog <-
+              create_catalog(data, name = 'ar', interval = 24) %>%
+              mutate(start = paste(start), end = paste(end))
+            data <- data %>%
+              left_join(
+                catalog %>% setNames(paste('ar', names(.), sep = '.')),
+                by = 'ar.count') %>%
+              mutate(
+                ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
+                ar.count = ifelse(!is.na(ar.duration), ar.count, NA)) %>% 
+              rename(date = ts)
+            ## attach sequence catalog information
+            startend <- data %>% 
+              filter(wateryear(date) %in% 1981:2010) %>% 
+              pull(ivt) %>% median
+            data <- data %>% 
+              mutate(rolling5 = lag(ivt, 5, 'mean', 'center') %>% setNA(.,0)) %>% 
+              mutate(seq = rolling5>startend) %>% 
+              mutate(seq.count = add_counter(seq))
+            sequences <- calculate_sequences(data, data) %>%
+              filter(month(start_date) %in% c(10:12,1:3)) %>% 
+              select(-start_date)
+            data <- data %>% 
+              left_join(
+                sequences %>% setNames(paste('seq', names(.), sep = '.')),
+                by = 'seq.count') %>% 
+              mutate(
+                seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
+                seq.count = ifelse(!is.na(seq.duration), seq.count, NA)) %>% 
+              mutate(ens = ens)
+            ## return dataframe
+            data
+          }
+        }
+      } else NULL
+    }
+stopCluster(cl)
+
+## checkpoint
+save(df_hist, file = '_scripts/df_hist_1130.Rdata') #change 11/30: removed summer sequences
+
+```
+
+## SSP 2-4.5
+
+```{r}
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+df_ssp245 <-
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'foreach', 'lubridate', 'tidyverse'),
+    .export = 
+      c('setNA', 'wateryear', 'add_counter', 'create_catalog',
+        'assign_AR_cat', 'calculate_sequences'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'rbind') %do% {
+          ## create dataframe
+          data_hist <- data.frame(
+            date = ts_hist, 
+            ivt = ivt_hist_sdm[[i]][,ens])
+          data_ssp245 <- data.frame(
+            ts = ts_decades, 
+            ar = ar_ssp245[[i]][,ens][ts_future %in% ts_decades],
+            ivt = ivt_ssp245_sdm[[i]][,ens]) %>% 
+            mutate(ar.count = add_counter(ar))
+          if (all(is.na(data_ssp245$ivt)) | all(is.na(data_hist$ivt))) NULL else {
+            ## attach AR catalog information
+            catalog <-
+              create_catalog(data_ssp245, name = 'ar', interval = 24) %>%
+              mutate(start = paste(start), end = paste(end))
+            data_ssp245 <- data_ssp245 %>%
+              left_join(
+                catalog %>% setNames(paste('ar', names(.), sep = '.')),
+                by = 'ar.count') %>%
+              mutate(
+                ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
+                ar.count = ifelse(!is.na(ar.duration), ar.count, NA)) %>% 
+              rename(date = ts)
+            ## attach sequence catalog information
+            startend <- data_hist %>% 
+              filter(wateryear(date) %in% 1981:2010) %>% 
+              pull(ivt) %>% median
+            data_ssp245 <- data_ssp245 %>% 
+              mutate(rolling5 = lag(ivt, 5, 'mean', 'center') %>% setNA(.,0)) %>% 
+              mutate(seq = rolling5>startend) %>% 
+              mutate(seq.count = add_counter(seq))
+            sequences <- calculate_sequences(data_ssp245, data_hist) %>%
+              filter(month(start_date) %in% c(10:12,1:3)) %>% 
+              select(-start_date)
+            data_ssp245 <- data_ssp245 %>% 
+              left_join(
+                sequences %>% setNames(paste('seq', names(.), sep = '.')),
+                by = 'seq.count') %>% 
+              mutate(
+                seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
+                seq.count = ifelse(!is.na(seq.duration), seq.count, NA)) %>% 
+              mutate(ens = ens)
+            ## return dataframe
+            data_ssp245
+          }
+        }
+      } else NULL
+    }
+stopCluster(cl)
+
+## checkpoint
+save(df_ssp245, file = '_scripts/df_ssp245_1130.Rdata')
+
+```
+
+## SSP 5-8.5
+
+```{r}
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- parallel::makeCluster(cores)
+registerDoSNOW(cl)
+df_ssp585 <-
+  foreach (
+    i = 1:ncell(grid_ca),
+    .packages = c('raster', 'foreach', 'lubridate', 'tidyverse'),
+    .export = 
+      c('setNA', 'wateryear', 'add_counter', 'create_catalog',
+        'assign_AR_cat', 'calculate_sequences'),
+    .options.snow = opts) %dopar% {
+      if (i %in% index_ca) {
+        foreach (ens = 1:5, .combine = 'rbind') %do% {
+          ## create dataframe
+          data_hist <- data.frame(
+            date = ts_hist, 
+            ivt = ivt_hist_sdm[[i]][,ens])
+          data_ssp585 <- data.frame(
+            ts = ts_decades, 
+            ar = ar_ssp585[[i]][,ens][ts_future %in% ts_decades],
+            ivt = ivt_ssp585_sdm[[i]][,ens]) %>% 
+            mutate(ar.count = add_counter(ar))
+          if (all(is.na(data_ssp585$ivt)) | all(is.na(data_hist$ivt))) NULL else {
+            ## attach AR catalog information
+            catalog <-
+              create_catalog(data_ssp585, name = 'ar', interval = 24) %>%
+              mutate(start = paste(start), end = paste(end))
+            data_ssp585 <- data_ssp585 %>%
+              left_join(
+                catalog %>% setNames(paste('ar', names(.), sep = '.')),
+                by = 'ar.count') %>%
+              mutate(
+                ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
+                ar.count = ifelse(!is.na(ar.duration), ar.count, NA)) %>% 
+              rename(date = ts)
+            ## attach sequence catalog information
+            startend <- data_hist %>% 
+              filter(wateryear(date) %in% 1981:2010) %>% 
+              pull(ivt) %>% median
+            data_ssp585 <- data_ssp585 %>% 
+              mutate(rolling5 = lag(ivt, 5, 'mean', 'center') %>% setNA(.,0)) %>% 
+              mutate(seq = rolling5>startend) %>% 
+              mutate(seq.count = add_counter(seq))
+            sequences <- calculate_sequences(data_ssp585, data_hist) %>%
+              filter(month(start_date) %in% c(10:12,1:3)) %>% 
+              select(-start_date)
+            data_ssp585 <- data_ssp585 %>% 
+              left_join(
+                sequences %>% setNames(paste('seq', names(.), sep = '.')),
+                by = 'seq.count') %>% 
+              mutate(
+                seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
+                seq.count = ifelse(!is.na(seq.duration), seq.count, NA)) %>% 
+              mutate(ens = ens)
+            ## return dataframe
+            data_ssp585
+          }
+        }
+      } else NULL
+    }
+stopCluster(cl)
+
+## checkpoint
+save(df_ssp585, file = '_scripts/df_ssp585_1130.Rdata')
+
+```
