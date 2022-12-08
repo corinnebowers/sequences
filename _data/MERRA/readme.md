@@ -21,7 +21,7 @@ and Information Services Center (GES DISC) at
 `get_precipitation.Rmd` contains instructions for download and processes
 data for the study area.
 
-<br>
+<br><br>
 
 [1] Gelaro, R., McCarty, W., Suárez, M. J., Todling, R., Molod, A.,
 Takacs, L., Randles, C. A., Darmenov, A., Bosilovich, M. G., Reichle,

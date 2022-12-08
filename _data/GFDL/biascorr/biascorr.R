@@ -1,6 +1,6 @@
 
 ###################################################################################################
-## biascorr.Rmd: This script creates generates .Rdata files of bias-corrected IVT and precipitation
+## biascorr.R: This script creates generates .Rdata files of bias-corrected IVT and precipitation
 ##   (historic, SSP 2-4.5, and SSP 5-8.5) for all raster grid cells in California.
 ## Created by Corinne Bowers 9/20/22
 ## Last updated 11/3/22
