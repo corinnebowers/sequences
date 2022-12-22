@@ -2,7 +2,7 @@
 ###################################################################################################
 ## create_df_functions.R: This script contains functions to support the file create_df.Rmd.
 ## Created by Corinne Bowers 9/28/22
-## Last updated 10/19/22
+## Last updated 12/9/22
 ###################################################################################################
 
 
@@ -50,6 +50,43 @@ create_catalog <- function(df, name, cat = TRUE, interval = 3) {
       catalog %>% 
         mutate(cat = map2_dbl(.x = maxivt, .y = duration, .f = ~assign_AR_cat(.x, .y))))
   } else return(catalog)
+}
+
+
+###################################################################################################
+
+calculate_sequences <- function(data, data_hist, window = 5, startend = 0.5, magcutoff = 250) {
+  #' Creates a catalog of sequences.
+  #' @param df dataframe with columns date (date) & ivt (double)
+  #' @param window integer parameter specifying the width of the rolling average, in days
+  #' @param startend double parameter specifying the quantile to use as the start/end threshold 
+  #' @param magcutoff double parameter specifying the magnitude cutoff for including sequences
+  
+  ## calculate start-end threshold
+  threshold <- data_hist %>%
+    filter(wateryear(date) %in% 1981:2010) %>%
+    pull(ivt) %>% 
+    quantile(startend, na.rm = TRUE)
+  
+  ## calculate sequences
+  data <- data %>% 
+    mutate(
+      rolling5 = lag(ivt, window, 'mean', 'center') %>% setNA(.,0),
+      seq = rolling5 > threshold,
+      seq.count = add_counter(seq)) %>%
+    transmute(ts = date, ivt_24hr = ivt, ivt = rolling5, seq, seq.count)
+  sequences <- data %>%
+    create_catalog(., name = 'seq', interval = 1, cat = FALSE) %>%
+    rename(maxrolling = maxivt) %>%
+    filter(maxrolling > magcutoff) %>%
+    left_join(data, by = c('count' = 'seq.count')) %>% 
+    group_by(count) %>% 
+    summarize(
+      start_date = as.Date(start[1]), 
+      maxrolling = maxrolling[1], 
+      duration = duration[1], 
+      maxivt = max(ivt_24hr))
+  return(sequences)
 }
 
 

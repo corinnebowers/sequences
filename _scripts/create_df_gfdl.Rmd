@@ -25,123 +25,90 @@ mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
 
 ```
 
-```{r}
-calculate_sequences <- function(data, data_hist, window = 5, startend = 0.5, magcutoff = 250) {
-  #' Creates a catalog of sequences.
-  #' @param df dataframe with columns date (date) & ivt (double)
-  #' @param window integer parameter specifying the width of the rolling average, in days
-  #' @param startend double parameter specifying the quantile to use as the start/end threshold 
-  #' @param magcutoff double parameter specifying the magnitude cutoff for including sequences
-
-  ## calculate start-end threshold
-  threshold <- data_hist %>%
-    filter(wateryear(date) %in% 1981:2010) %>%
-    pull(ivt) %>% 
-    quantile(startend, na.rm = TRUE)
-  
-  ## calculate sequences
-  data <- data %>% 
-    mutate(
-      rolling5 = lag(ivt, window, 'mean', 'center') %>% setNA(.,0),
-      seq = rolling5 > threshold,
-      seq.count = add_counter(seq)) %>%
-    transmute(ts = date, ivt_24hr = ivt, ivt = rolling5, seq, seq.count)
-  sequences <- data %>%
-    create_catalog(., name = 'seq', interval = 1, cat = FALSE) %>%
-    rename(maxrolling = maxivt) %>%
-    filter(maxrolling > magcutoff) %>%
-    left_join(data, by = c('count' = 'seq.count')) %>% 
-    group_by(count) %>% 
-    summarize(
-      start_date = as.Date(start[1]), 
-      maxrolling = maxrolling[1], 
-      duration = duration[1], 
-      maxivt = max(ivt_24hr))
-  return(sequences)
-}
-
-```
-
 # load data
 
 ## GFDL AR
 
 ```{r}
-## GFDL historic
-ar_hist_list <- foreach (i = 1:5) %do% {
-  load(paste0('_data/GFDL/raw/files/ar_hist_ens0', i, '.Rdata'))
-  if (i==1) ar_hist_ens01 else ar_hist
-} %>% lapply(function(x) crop(x, grid_ca))
-
-## GFDL SSP 2-4.5
-ar_ssp245_list <- foreach (i = 1:5) %do% {
-  load(paste0('_data/GFDL/raw/files/ar_ssp245_ens0', i, '.Rdata'))
-  if (i==1) ar_ssp245_ens01 else ar_ssp245
-} %>% lapply(function(x) crop(x, grid_ca))
-
-## GFDL SSP 5-8.5
-ar_ssp585_list <- foreach (i = 1:5) %do% {
-  load(paste0('_data/GFDL/raw/files/ar_ssp585_ens0', i, '.Rdata'))
-  if (i==1) ar_ssp585_ens01 else ar_ssp585
-} %>% lapply(function(x) crop(x, grid_ca))
-
-rm(ar_hist, ar_hist_ens01, ar_ssp245, ar_ssp245_ens01, ar_ssp585, ar_ssp585_ens01)
+# ## GFDL historic
+# ar_hist_list <- foreach (i = 1:5) %do% {
+#   load(paste0('_data/GFDL/raw/files/ar_hist_ens0', i, '.Rdata'))
+#   if (i==1) ar_hist_ens01 else ar_hist
+# } %>% lapply(function(x) crop(x, grid_ca))
+# 
+# ## GFDL SSP 2-4.5
+# ar_ssp245_list <- foreach (i = 1:5) %do% {
+#   load(paste0('_data/GFDL/raw/files/ar_ssp245_ens0', i, '.Rdata'))
+#   if (i==1) ar_ssp245_ens01 else ar_ssp245
+# } %>% lapply(function(x) crop(x, grid_ca))
+# 
+# ## GFDL SSP 5-8.5
+# ar_ssp585_list <- foreach (i = 1:5) %do% {
+#   load(paste0('_data/GFDL/raw/files/ar_ssp585_ens0', i, '.Rdata'))
+#   if (i==1) ar_ssp585_ens01 else ar_ssp585
+# } %>% lapply(function(x) crop(x, grid_ca))
+# 
+# rm(ar_hist, ar_hist_ens01, ar_ssp245, ar_ssp245_ens01, ar_ssp585, ar_ssp585_ens01)
 
 ```
 
 ```{r}
-## convert to match IVT format
-pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
-cl <- parallel::makeCluster(cores)
-registerDoSNOW(cl)
-ar_hist <- 
-  foreach (
-    i = 1:ncell(grid_ca),
-    .packages = c('raster', 'tidyverse', 'foreach'),
-    .options.snow = opts) %dopar% {
-      if (i %in% index_ca) {
-        foreach (ens = 1:5, .combine = 'cbind') %do% {
-          temp <- ar_hist_list[[ens]] %>% raster::extract(i) %>% c
-          temp > 0
-        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
-      } else NULL
-    }
-cat('\n')
-ar_ssp245 <- 
-  foreach (
-    i = 1:ncell(grid_ca),
-    .packages = c('raster', 'tidyverse', 'foreach'),
-    .options.snow = opts) %dopar% {
-      if (i %in% index_ca) {
-        foreach (ens = 1:5, .combine = 'cbind') %do% {
-          temp <- ar_ssp245_list[[ens]] %>% raster::extract(i) %>% c
-          temp > 0
-        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
-      } else NULL
-    }
-cat('\n')
-ar_ssp585 <- 
-  foreach (
-    i = 1:ncell(grid_ca),
-    .packages = c('raster', 'tidyverse', 'foreach'),
-    .options.snow = opts) %dopar% {
-      if (i %in% index_ca) {
-        foreach (ens = 1:5, .combine = 'cbind') %do% {
-          temp <- ar_ssp585_list[[ens]] %>% raster::extract(i) %>% c
-          temp > 0
-        } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
-      } else NULL
-    }
-stopCluster(cl)
+# ## convert to match IVT format
+# pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+# cl <- parallel::makeCluster(cores)
+# registerDoSNOW(cl)
+# ar_hist <- 
+#   foreach (
+#     i = 1:ncell(grid_ca),
+#     .packages = c('raster', 'tidyverse', 'foreach'),
+#     .options.snow = opts) %dopar% {
+#       if (i %in% index_ca) {
+#         foreach (ens = 1:5, .combine = 'cbind') %do% {
+#           temp <- ar_hist_list[[ens]] %>% raster::extract(i) %>% c
+#           temp > 0
+#         } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+#       } else NULL
+#     }
+# cat('\n')
+# ar_ssp245 <- 
+#   foreach (
+#     i = 1:ncell(grid_ca),
+#     .packages = c('raster', 'tidyverse', 'foreach'),
+#     .options.snow = opts) %dopar% {
+#       if (i %in% index_ca) {
+#         foreach (ens = 1:5, .combine = 'cbind') %do% {
+#           temp <- ar_ssp245_list[[ens]] %>% raster::extract(i) %>% c
+#           temp > 0
+#         } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+#       } else NULL
+#     }
+# cat('\n')
+# ar_ssp585 <- 
+#   foreach (
+#     i = 1:ncell(grid_ca),
+#     .packages = c('raster', 'tidyverse', 'foreach'),
+#     .options.snow = opts) %dopar% {
+#       if (i %in% index_ca) {
+#         foreach (ens = 1:5, .combine = 'cbind') %do% {
+#           temp <- ar_ssp585_list[[ens]] %>% raster::extract(i) %>% c
+#           temp > 0
+#         } %>% as.data.frame %>% setNames(paste0('ens0', 1:5))
+#       } else NULL
+#     }
+# stopCluster(cl)
+
+## checkpoint
+# save(ar_hist, ar_ssp245, ar_ssp585, file = '_scripts/_checkpoints/ar_gfdl.Rdata')
+load('_scripts/_checkpoints/ar_gfdl.Rdata')
 
 ```
 
 ## GFDL IVT
 
 ```{r}
-load('_data/GFDL/biascorr/files/ivt_hist_sdm.Rdata')
-load('_data/GFDL/biascorr/files/ivt_ssp245_sdm.Rdata')
-load('_data/GFDL/biascorr/files/ivt_ssp585_sdm.Rdata')
+load('_data/GFDL/biascorr/files/ivt_hist_sdm3.Rdata')
+load('_data/GFDL/biascorr/files/ivt_ssp245_sdm3.Rdata')
+load('_data/GFDL/biascorr/files/ivt_ssp585_sdm3.Rdata')
 
 ```
 
@@ -220,7 +187,10 @@ df_hist <-
 stopCluster(cl)
 
 ## checkpoint
-save(df_hist, file = '_scripts/df_hist_1130.Rdata') #change 11/30: removed summer sequences
+save(df_hist, file = '_scripts/_checkpoints/df_hist_1212.Rdata') 
+#change 11/30: removed summer sequences
+#change 12/11: stricter GOF criteria for gamma-pareto distribution fit
+#change 12/12: even stricter
 
 ```
 
@@ -290,7 +260,7 @@ df_ssp245 <-
 stopCluster(cl)
 
 ## checkpoint
-save(df_ssp245, file = '_scripts/df_ssp245_1130.Rdata')
+save(df_ssp245, file = '_scripts/_checkpoints/df_ssp245_1214.Rdata')
 
 ```
 
@@ -360,6 +330,6 @@ df_ssp585 <-
 stopCluster(cl)
 
 ## checkpoint
-save(df_ssp585, file = '_scripts/df_ssp585_1130.Rdata')
+save(df_ssp585, file = '_scripts/_checkpoints/df_ssp585_1214.Rdata')
 
 ```

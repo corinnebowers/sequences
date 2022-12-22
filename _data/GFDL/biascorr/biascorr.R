@@ -10,8 +10,8 @@
 cat('setting up...\n')
 
 ## set working directory
-# setwd('D:/2-sequences/')
-setwd('/scratch/users/cbowers/sequences/')
+setwd('D:/2-sequences/')
+# setwd('/scratch/users/cbowers/sequences/')
 
 ## load setup file
 source('_data/GFDL/biascorr/biascorr_setup.R')
@@ -64,15 +64,16 @@ ivt_hist_sdm <-
             }
           } %>% reduce(full_join, by = 'date') %>%
           arrange(date) %>% select(-date) %>%
-          setNames(paste0('ens0', 1:5))
+          setNames(paste0('ens0', 1:5)) %>% 
+          mutate(across(everything(), .fns = ~ifelse(.x>1500,1500,.x)))
         return(unbiased)
       } else NULL
     }
-# stopCluster(cl)
+stopCluster(cl)
 Sys.time() - start
 
 ## checkpoint
-save(ivt_hist_sdm, file = '_data/GFDL/biascorr/files/ivt_hist_sdm.Rdata')
+save(ivt_hist_sdm, file = '_data/GFDL/biascorr/files/ivt_hist_sdm3.Rdata')
 
 
 #### SSP2-4.5 IVT #################################################################################
@@ -143,7 +144,7 @@ for (i in 1:ncell(grid_ca)) {
 Sys.time() - start
 
 ## checkpoint
-save(ivt_ssp245_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp245_sdm.Rdata')
+save(ivt_ssp245_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp245_sdm3.Rdata')
 
 
 #### SSP5-8.5 IVT #################################################################################
@@ -214,7 +215,7 @@ stopCluster(cl)
 Sys.time() - start
 
 ## checkpoint
-save(ivt_ssp585_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp585_sdm.Rdata')
+save(ivt_ssp585_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp585_sdm3.Rdata')
 
 
 #### historic precipitation #######################################################################

@@ -91,92 +91,134 @@ load('_data/WLDAS/sm_stack_1109.Rdata')
 ```{r}
 # takes about 30 minutes on local machine
 
-# start <- Sys.time()
-# pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
-# cl <- makeCluster(cores)
-# registerDoSNOW(cl)
-# df_3hr <- 
-#   foreach(
-#     i = 1:ncell(grid_ca),
-#     .options.snow = opts,
-#     .export = 
-#       c('wateryear', 'positive', 'lag', 'setNA', 'add_counter', 
-#         'create_catalog', 'assign_AR_cat'),
-#     .packages = c('raster', 'foreach', 'tidyverse', 'lubridate')) %dopar% {
-#       if (i %in% index_ca) {
-#         ## create dataframe for the specified cell
-#         index <- rowColFromCell(ar_ca, i)
-#         data <- 
-#           data.frame(
-#             ts = ts_merra,
-#             ivt = c(ivt_ca[index[1],index[2],]), 
-#             ar = c(ar_ca[index[1],index[2],])==1, 
-#             precip = c(precip_ca[index[1],index[2],])) %>%
-#           mutate(ar.count = add_counter(ar))
-#         
-#         ## add soil moisture data
-#         data.sm <- 
-#           data.frame(
-#             date = dates_merra,
-#             sm = c(sm_stack[index[1],index[2],]))
-#         data <- data %>% 
-#           mutate(date = as.Date(ts_merra)) %>% 
-#           left_join(data.sm, by = 'date') %>% 
-#           select(-date)
-#         
-#         ## attach AR catalog information to dataframe
-#         catalog <- 
-#           create_catalog(data, name = 'ar', interval = 3) %>% 
-#           filter(duration > 6) %>% 
-#           mutate(start = paste(start), end = paste(end))
-#         data <- data %>% 
-#           left_join(
-#             catalog %>% setNames(paste('ar', names(.), sep = '.')), 
-#             by = 'ar.count') %>% 
-#           mutate(
-#             ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
-#             ar.count = ifelse(!is.na(ar.duration), ar.count, NA))
-# 
-#         ## attach sequence information to dataframe
-#         startend <- data %>% 
-#           filter(wateryear(ts) %in% 1981:2010) %>% 
-#           pull(ivt) %>% median(na.rm = TRUE)
-#         data <- data %>% 
-#           mutate(
-#             rolling5 = lag(ivt, 5*8, 'mean', 'center') %>% setNA(.,0),
-#             seq = rolling5 > startend,
-#             seq.count = add_counter(seq))
-#         sequences <- data %>% 
-#           select(-ivt) %>% rename(ivt = rolling5) %>% 
-#           create_catalog(., name = 'seq', interval = 3/24, cat = FALSE) %>% 
-#           rename(maxrolling = maxivt) %>% 
-#           filter(maxrolling > 250) %>% 
-#           mutate(start = paste(start), end = paste(end))
-#         data <- data %>% 
-#           left_join(
-#             sequences %>% setNames(paste('seq', names(.), sep = '.')),
-#             by = 'seq.count') %>% 
-#           mutate(
-#             seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
-#             seq.count = ifelse(!is.na(seq.duration), seq.count, NA))
-# 
-#         ## return dataframe
-#         data
-#       } else NULL
-#     }
-# stopCluster(cl)
-# Sys.time() - start
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+data_3hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    # .export = c('wateryear', 'positive', 'lag', 'setNA'),
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate')) %dopar% {
+      if (i %in% index_ca) {
+        ## create dataframe for the specified cell
+        index <- rowColFromCell(ar_ca, i)
+        data <-
+          data.frame(
+            ts = ts_merra,
+            ivt = c(ivt_ca[index[1],index[2],]),
+            ar = c(ar_ca[index[1],index[2],])==1,
+            precip = c(precip_ca[index[1],index[2],])) %>%
+          mutate(ar.count = add_counter(ar))
+
+        ## add soil moisture data
+        data.sm <-
+          data.frame(
+            date = dates_merra,
+            sm = c(sm_stack[index[1],index[2],]))
+        data <- data %>%
+          mutate(date = as.Date(ts_merra)) %>%
+          left_join(data.sm, by = 'date') %>%
+          select(-date)
+
+        ## return dataframe
+        data
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+```{r}
+## save out
+save(data_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
+
+# ## load from file
+# load('_scripts/_checkpoints/data_3hr_1209.Rdata')
+
+```
+
+```{r}
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+df_3hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .export =
+      c('wateryear', 'positive', 'lag', 'setNA', 'add_counter',
+        'create_catalog', 'assign_AR_cat'),
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate')) %dopar% {
+      if (i %in% index_ca) {
+        ## attach AR catalog information to dataframe
+        data <- data_3hr[[i]]
+        catalog <-
+          create_catalog(data, name = 'ar', interval = 3) %>%
+          filter(duration > 6) %>%
+          mutate(start = paste(start), end = paste(end))
+        data <- data %>%
+          left_join(
+            catalog %>% setNames(paste('ar', names(.), sep = '.')),
+            by = 'ar.count') %>%
+          mutate(
+            ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
+            ar.count = ifelse(!is.na(ar.duration), ar.count, NA))
+
+        ## attach sequence information to dataframe
+        startend <- data %>%
+          filter(wateryear(ts) %in% 1981:2010) %>%
+          pull(ivt) %>% median(na.rm = TRUE)
+        data <- data %>%
+          mutate(
+            rolling5 = lag(ivt, 5*8, 'mean', 'center') %>% setNA(.,0),
+            seq = rolling5 > startend) %>% 
+        #   mutate(gap.count = add_counter(!seq))
+        # ## combine sequences with gaps of <= 6 hours
+        # override <- data %>%
+        #   filter(!seq) %>%
+        #   group_by(gap.count) %>%
+        #   summarize(dur = length(gap.count)) %>%
+        #   filter(dur <= 2) %>% pull(gap.count)
+        # data <- data %>%
+        #   mutate(seq = ifelse(gap.count %in% override, TRUE, seq)) %>% 
+        #   select(-gap.count) %>%
+          mutate(seq.count = add_counter(seq))
+        sequences <- data %>%
+          select(-ivt) %>% rename(ivt = rolling5) %>%
+          create_catalog(., name = 'seq', interval = 3/24, cat = FALSE) %>%
+          rename(maxrolling = maxivt) %>%
+          filter(maxrolling > 250) %>%
+          filter(month(start) %in% c(10:12,1:3)) %>%
+          mutate(start = paste(start), end = paste(end))
+        data <- data %>%
+          left_join(
+            sequences %>% setNames(paste('seq', names(.), sep = '.')),
+            by = 'seq.count') %>%
+          mutate(
+            seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
+            seq.count = ifelse(!is.na(seq.duration), seq.count, NA))
+
+        ## return dataframe
+        data
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
 
 ```
 
 ## checkpoint
 
 ```{r}
-# ## save out
-# save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1109.Rdata')
+## save out
+save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
 
-## load from file
-load('_scripts/_checkpoints/df_3hr_1109.Rdata')
+# ## load from file
+# load('_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ```
 
@@ -221,13 +263,34 @@ df_24hr <-
           summarize(
             ar = mean(ar) >= 0.25,
             ar.count = case_when(ar ~ mode(ar.count)),
-            seq = mean(seq) >= 0.25,
-            seq.count = case_when(seq ~ mode(seq.count)),
+            seq.3hr = mean(seq) >= 0.25,
+            # seq.count = case_when(seq ~ mode(seq.count)),
             ivt.snap = sample(ivt,1),
             ivt.max = Max(ivt),
             precip = Sum(precip),
             sm = sm[1])
         
+        ## attach sequences
+        startend <- data %>% 
+          filter(wateryear(date) %in% 1981:2010) %>% 
+          pull(ivt.snap) %>% median
+        data <- data %>% 
+          rename(ivt = ivt.snap) %>% 
+          mutate(rolling5 = lag(ivt, 5, 'mean', 'center') %>% setNA(.,0)) %>% 
+          mutate(seq = rolling5>startend) %>% 
+          mutate(seq.count = add_counter(seq))
+        sequences <- calculate_sequences(data, data) %>%
+          filter(month(start_date) %in% c(10:12,1:3)) %>% 
+          select(-start_date)
+        data <- data %>% 
+          left_join(
+            sequences %>% setNames(paste('seq', names(.), sep = '.')),
+            by = 'seq.count') %>% 
+          mutate(
+            seq = ifelse(!is.na(seq.duration), TRUE, FALSE),
+            seq.count = ifelse(!is.na(seq.duration), seq.count, NA)) %>% 
+          rename(ivt.snap = ivt)
+
         ## attach runoff
         if (is.null(runoff[[i]])) {
           data$runoff <- NA
@@ -265,10 +328,10 @@ Sys.time() - start
 
 ```{r}
 ## save out
-save(df_24hr, file = '_scripts/_checkpoints/data_24hr_1109.Rdata') 
+save(df_24hr, file = '_scripts/_checkpoints/data_24hr_1209.Rdata') 
  
 # ## load from file
-# load('_scripts/_checkpoints/data_24hr_1109.Rdata')
+# load('_scripts/_checkpoints/data_24hr_1209.Rdata')
 
 ```
 

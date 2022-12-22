@@ -3,7 +3,7 @@
 ## biascorr.Rmd: This script creates generates .Rdata files of bias-corrected IVT and precipitation
 ##   (historic, SSP 2-4.5, and SSP 5-8.5) for all raster grid cells in California.
 ## Created by Corinne Bowers 9/20/22
-## Last updated 11/3/22
+## Last updated 12/11/22
 ###################################################################################################
 
 #### setup ########################################################################################
@@ -73,7 +73,7 @@ if (id==1) {
       }
   
   ## checkpoint
-  save(ivt_hist_sdm, file = '_data/GFDL/biascorr/files/ivt_hist_sdm.Rdata')
+  save(ivt_hist_sdm, file = '_data/GFDL/biascorr/files/ivt_hist_sdm3.Rdata')
 }
 
 #### SSP2-4.5 IVT #################################################################################
@@ -139,7 +139,7 @@ if (id==2) {
   }
 
   ## checkpoint
-  save(ivt_ssp245_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp245_sdm.Rdata')
+  save(ivt_ssp245_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp245_sdm3.Rdata')
 }
 
 #### SSP5-8.5 IVT #################################################################################
@@ -205,7 +205,7 @@ if (id==3) {
   }
 
   ## checkpoint
-  save(ivt_ssp585_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp585_sdm.Rdata')
+  save(ivt_ssp585_sdm, file = '_data/GFDL/biascorr/files/ivt_ssp585_sdm3.Rdata')
 }
 
 #### historic precipitation #######################################################################

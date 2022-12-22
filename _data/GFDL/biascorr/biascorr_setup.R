@@ -2,7 +2,7 @@
 ###################################################################################################
 ## biascorr_setup.R: This script creates .Rdata files to support the file biascorr.Rmd.
 ## Created by Corinne Bowers 11/3/22
-## Last updated 11/4/22
+# Last updated 12/11/22 (added stricter GOF)
 ###################################################################################################
 
 #### setup ########################################################################################
@@ -138,7 +138,7 @@ cat('calculating mixture model parameters for MERRA-2 IVT...\n')
 #     .packages = c('POT', 'fitdistrplus', 'foreach', 'pracma', 'lubridate', 'tidyverse'),
 #     .options.snow = opts) %dopar% {
 #       if (i %in% index_ca) {
-#         ## calculate mixture model parameters for MERRA
+#         ## pull MERRA IVT data
 #         values_merra <- ivt_merra %>%
 #           raster::extract(i) %>% c %>%
 #           data.frame(ts = ts_merra, ivt = .) %>%
@@ -147,9 +147,19 @@ cat('calculating mixture model parameters for MERRA-2 IVT...\n')
 #           filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1981:2010) %>%
 #           mutate(values = cbind(values,ivt.domain[1]) %>% apply(1,max)) %>%
 #           pull(values)
+#         ## calculate mixture model parameters
 #         par_merra <- tryCatch(
 #           optimize.aic(values_merra, ivt.domain),
-#           error = function(e) c(rep(0,6),e))
+#           error = function(e) rep(0,7))
+#         ## repeat parameter optimization to improve GOF, if necessary
+#         count <- 1
+#         while (count < 5 & par_merra[7] < 0.9) {
+#           temp <- tryCatch(
+#             optimize.aic(values_merra, ivt.domain, par = par_merra[-7]),
+#             error = function(e) rep(0,7))
+#           par_merra <- if (par_merra[7] >= temp[7]) par_merra else temp
+#           count <- count+1
+#         }
 #         ## return results
 #         list(values_merra, par_merra[1:6], par_merra[7])
 #       } else NULL
@@ -157,16 +167,17 @@ cat('calculating mixture model parameters for MERRA-2 IVT...\n')
 # stopCluster(cl)
 # Sys.time() - start
 
-# ## troubleshoot
+## troubleshoot
 # data.frame(
 #   converge = ivt_merra_param %>%
 #     lapply(function(x) if (is.null(x)) NA else sum(x[[2]])!=0) %>% reduce(c),
 #   ks.pass = ivt_merra_param %>%
-#     lapply(function(x) if (is.null(x)) NA else x[[2]][7]) %>% reduce(c))
+#     lapply(function(x) if (is.null(x)) NA else x[[3]]) %>% reduce(c)) %>% View
+# # problem children (manually rerun): 42,59,73,78,130,167, 111,129,153,336
 
 ## checkpoint
-# save(ivt_merra_param, file = '_data/GFDL/biascorr/params/ivt_merra_param.Rdata')
-load('_data/GFDL/biascorr/params/ivt_merra_param.Rdata')
+# save(ivt_merra_param, file = '_data/GFDL/biascorr/params/ivt_merra_param3.Rdata')
+load('_data/GFDL/biascorr/params/ivt_merra_param3.Rdata')
 
 
 #### mixture model: historic IVT ##################################################################
@@ -184,19 +195,29 @@ cat('calculating mixture model parameters for GFDL historic IVT...\n')
 #     .packages = c('POT', 'fitdistrplus', 'foreach', 'pracma', 'lubridate', 'tidyverse'),
 #     .options.snow = opts) %dopar% {
 #       if (i %in% index_ca) {
-#         ## calculate mixture model parameters for GFDL historic
 #         values_hist <- matrix(nrow = len, ncol = 5)
 #         par_hist <- matrix(nrow = 7, ncol = 5)
 #         for (ens in 1:5) {
+#           ## pull GFDL historic IVT data
 #           values_hist[,ens] <- ivt_gfdl[[ens]] %>%
 #             raster::extract(i) %>% c %>%
 #             data.frame(date = ts_hist, values = .) %>%
 #             filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1981:2010) %>%
 #             mutate(values = cbind(values,ivt.domain[1]) %>% apply(1,max)) %>%
 #             pull(values)
+#           ## calculate mixture model parameters
 #           par_hist[,ens] <- tryCatch(
 #             optimize.aic(values_hist[,ens], ivt.domain),
 #             error = function(e) rep(0,7))
+#           ## repeat parameter optimization to improve GOF, if necessary
+#           count <- 1
+#           while (count < 5 & par_hist[7,ens] < 0.9) {
+#             temp <- tryCatch(
+#               optimize.aic(values_hist[,ens], ivt.domain, par = par_hist[-7,ens]),
+#               error = function(e) rep(0,7))
+#             par_hist[,ens] <- if (par_hist[7,ens] >= temp[7]) par_hist[,ens] else temp
+#             count <- count+1
+#           }
 #         }
 #         ## return results
 #         list(values_hist, par_hist[1:6,], par_hist[7,])
@@ -212,11 +233,12 @@ cat('calculating mixture model parameters for GFDL historic IVT...\n')
 #   apply(1, Sum) %>% unname
 # ivt_hist_param %>%
 #   lapply(function(x) if (is.null(x)) rep(NA,5) else x[[3]]) %>%
-#   reduce(rbind)
+#   reduce(rbind) %>% apply(2, function(x) x<=0.05) %>%
+#   apply(1, Sum) %>% unname
 
 ## checkpoint
-# save(ivt_hist_param, file = '_data/GFDL/biascorr/params/ivt_hist_param.Rdata')
-load('_data/GFDL/biascorr/params/ivt_hist_param.Rdata')
+# save(ivt_hist_param, file = '_data/GFDL/biascorr/params/ivt_hist_param3.Rdata')
+load('_data/GFDL/biascorr/params/ivt_hist_param3.Rdata')
 
 
 #### mixture model: MERRA precipitation ###########################################################

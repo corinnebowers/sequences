@@ -94,20 +94,22 @@ calculate.aic <-
     if (rp100 < rp100_ci[1] | rp100 > rp100_ci[2]) return(aic + penalty) else return(aic)
   }
 
-optimize.aic <- function(values, domain) {
+optimize.aic <- function(values, domain, par = NA) {
   ## filter bad domain input
   if (domain[1] == 0) stop('Domain minimum must be greater than zero.')
   if (length(seq(domain[1], domain[2], domain[3])) < 10) {
     stop('Please define at least 10 values for the interpolation domain.')
   }
   
-  ## create initial parameter guesses
-  par <- rep(NA, 6)
-  par[1:2] <- fitdist(values, 'gamma')$estimate
-  par[3:4] <- fitgpd(values, threshold = quantile(values, 0.95))$fitted.values
-  par[5] <- quantile(values, 0.95)
-  par[6] <- par[5]/2
-  
+  ## create initial parameter guesses, if not provided
+  if (any(is.na(par)) | sum(par)==0) {
+    par <- rep(NA, 6)
+    par[1:2] <- fitdist(values, 'gamma')$estimate
+    par[3:4] <- fitgpd(values, threshold = quantile(values, 0.95))$fitted.values
+    par[5] <- quantile(values, 0.95)
+    par[6] <- par[5]/2
+  }
+
   ## calculate GPD-only 100-year IVT value
   rp100_ci <- calculate.rp100(par, values, threshold = par[5], nyr = 30)
   
