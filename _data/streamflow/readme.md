@@ -3,13 +3,13 @@
 This folder contains code to process and download streamgage data
 available from the National Water Information Service (NWIS) at the
 United States Geological Service (USGS). Flow data was retrieved from
-the NWIS [1] using the R package *r**n**o**a**a* [2]. Drainage area
-geometries were retrieved from Streamstats [3] using both the API and
-the batch processing tool. The file `get_streamflow.Rmd` guides the user
-through the process of downloading flows, downloading drainage area
-geometries, converting streamflow to runoff, and regionalizing runoff to
-match the resolution of the MERRA-2/SPEAR 50km × 50km grid using the
-method from Brakebill et al. (2011) [4].
+the NWIS [1] using the R package *rnoaa* [2]. Drainage area geometries
+were retrieved from Streamstats [3] using both the API and the batch
+processing tool. The file `get_streamflow.Rmd` guides the user through
+the process of downloading flows, downloading drainage area geometries,
+converting streamflow to runoff, and regionalizing runoff to match the
+resolution of the MERRA-2/SPEAR 50km × 50km grid using the method from
+Brakebill et al. (2011) [4].
 
 <br><br>
 
