@@ -11,7 +11,5 @@ The markdown files are also available as interactive HTML documents through the 
 * [reproduce_figures.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper.
 * [supplemental_figures.html]() presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
 
-It contains the code to collect and manipulate all data used to generate the paper's conclusions, and it includes both code and formatted markdown files that reproduce all figures and numerical results from the paper.
-
 If you have any further questions please contact Corinne Bowers. 
 
