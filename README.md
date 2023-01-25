@@ -9,7 +9,7 @@ The `results` folder contains code and formatted markdown files that reproduce a
 The markdown files are also available as interactive HTML documents through the links below.
 
 * [reproduce_figures.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper.
-* [supplemental_figures.html]() presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
+* [supplementary_figures.html](https://corinnebowers.github.io/supplementary_figures.html) presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
 
 If you have any further questions please contact Corinne Bowers. 
 
