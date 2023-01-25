@@ -29,6 +29,9 @@ knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center',
 Load packages & functions 
 
 ```{r message = FALSE, warning = FALSE, results = 'hide'}
+## set random seed to produce consistent results
+set.seed(2023)
+
 source('_data/setup.R')
 source('_scripts/create_df_functions.R')
 
@@ -38,12 +41,10 @@ library(pammtools)
 library(lhs)
 
 ## progress bar
-progress <- TRUE
-if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+progress <- FALSE
 
 ## geospatial helpers
 colors.huc <- colors.huc[c(6:10,1:5)]
-cal <- st_union(california)
 
 ## download custom boxplot function
 library(assertthat)
@@ -144,7 +145,7 @@ ggsave('_figures/s1_biascorr.png', width=6, height=3.75)
 <br>
 Generate LHS samples 
 
-```{r eval = FALSE}
+```{r}
 ## define big table of samples
 samples.norm <- improvedLHS(n = 100, k = 3)
 samples.dist <- 
@@ -161,7 +162,7 @@ Generate output statistics for every LHS parameter combination
 
 (this takes a while $\to$ load from file)
 
-```{r eval = FALSE}
+```{r}
 ## define progress bar
 if (progress) pb <- txtProgressBar(min = 0, max = 10*nrow(samples.dist), style = 3)
 
@@ -306,7 +307,7 @@ save(samples.dist, sens_hist, sens_ssp245, sens_ssp585, file = '_results/sensiti
 
 ```{r}
 ## load checkpoint from file
-load('_results/sensitivity_checkpoint.Rdata')
+# load('_results/sensitivity_checkpoint.Rdata')
 
 ```
 
@@ -1244,7 +1245,7 @@ ggplot(stats_all) +
     outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.5,
     show.legend = FALSE) + 
   geom_text(
-    aes(x = 130, y = 3.25, label = tag),
+    aes(x = 140, y = 3.25, label = tag),
     family = 'Segoe UI', size = 10/.pt, fontface = 'bold') +
   facet_wrap(~huc4, ncol = 2, dir = 'v', strip.position = 'left') +
   scale_fill_manual(values = scico(7, palette = 'roma')[5:7]) +
