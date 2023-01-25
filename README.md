@@ -2,6 +2,10 @@
 
 ## Supplemental Code Release
 
+
+<a href="https://zenodo.org/badge/latestdoi/542767925"><img src="https://zenodo.org/badge/542767925.svg" alt="DOI"></a>
+
+
 This repository provides supplementary information to the paper "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates" (doi:XX). 
 The `_data` folder contains code to collect all of the hydroclimatic data used to generate the paper's conclusions.
 The `_scripts` folder contains code to manipulate the data into timeseries datasets for all grid cells within California. 
