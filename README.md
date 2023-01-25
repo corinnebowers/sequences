@@ -8,8 +8,8 @@ The `_scripts` folder contains code to manipulate that data into 3-hourly and da
 The `results` folder contains code and formatted markdown files that reproduce all figures and numerical results from the paper.
 The markdown files are also available as interactive HTML documents through the links below.
 
-*[reproduce_figures.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper.
-*[supplemental_figures.html]() presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
+* [reproduce_figures.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper.
+* [supplemental_figures.html]() presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
 
 It contains the code to collect and manipulate all data used to generate the paper's conclusions, and it includes both code and formatted markdown files that reproduce all figures and numerical results from the paper.
 
