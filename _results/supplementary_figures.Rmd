@@ -1001,7 +1001,7 @@ ggplot(sens) +
     legend.text = element_text(margin = margin(-2,-2,-2,-2)),
     legend.margin = margin(-2,-2,-2,-2), 
     legend.box.margin = margin(-2,-2,-2,-2))
-ggsave('_figures/supp_legend.png', width = 5.5, height = 1, units = 'in')
+ggsave('_figures/s2_legend.png', width = 5.5, height = 1, units = 'in')
 
 g1.freq + g4.freq + g7.freq + g1.rsa + theme(axis.text.x = element_blank()) + 
   g3.freq + g6.freq + g9.freq + g2.rsa + theme(axis.text.x = element_blank()) + 

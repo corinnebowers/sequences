@@ -23,8 +23,9 @@ All of the datasets created in `create_df_gfdl.Rmd` use bias-corrected
 IVT data as presented in the `_data/GFDL/biascorr` folder. GFDL SPEAR
 data is recorded at a 24-hour resolution.
 
-All datasets contain the following variables: IVT, 5-day rolling IVT, AR
-indicator, AR ID number, AR maximum IVT, AR duration, sequence
-indicator, sequence ID number, sequence maximum IVT, and sequence
-duration. In addition, the datasets created in `create_df_merra.Rmd`
-contain variables for precipitation (mm) and soil moisture (mm/m).
+All datasets contain the following variables: IVT (kg/m/s), 5-day
+rolling average IVT (kg/m/s), AR indicator, AR ID number, AR maximum IVT
+(kg/m/s), AR duration (hours), sequence indicator, sequence ID number,
+sequence maximum IVT (kg/m/s), and sequence duration (days). In
+addition, the datasets created in `create_df_merra.Rmd` contain
+variables for precipitation (mm) and soil moisture (mm/m).
