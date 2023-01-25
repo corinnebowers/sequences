@@ -1,6 +1,6 @@
 ---
-title: "Name"
-date: "2022-12-15"
+title: "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates"
+date: "2023-01-23"
 author: Corinne Bowers
 output:
   html_document:
@@ -13,7 +13,7 @@ output:
     highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
 ---
 
-This markdown script reproduces the figures and numerical results associated with Sections 2 & 3 of the paper "XX" (doi:XX).
+This markdown script reproduces the figures and numerical results associated with the paper "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates" (doi:XX).
 Please note that the figures in the markdown file may not exactly match the published version because of formatting and scale differences.
 
 ```{r setup, include = FALSE}
@@ -48,7 +48,7 @@ if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 colors.huc <- colors.huc[c(6:10,1:5)]
 cal <- st_union(california)
 
-## download custom boxplot function for Figure XXX
+## download custom boxplot function for Figures XX & XX
 source_url('https://github.com/BoulderCodeHub/CRSSIO/blob/master/R/stat_boxplot_custom.R?raw=TRUE')
 
 ```
@@ -60,7 +60,7 @@ Load MERRA-2 catalogs
 load('_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ## 24-hour dataset
-load('_scripts/_checkpoints/data_24hr_1209.Rdata')
+load('_scripts/_checkpoints/df_24hr_1209.Rdata')
 
 ## metadata 
 ts_merra <- seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
@@ -91,11 +91,11 @@ decades <-
 
 ```
 
-# Section 2: Sequence Definition 
+# 2) Methodology
 
-## Section 2.1: Sequence Calculation Algorithm
+## 2.2.1) Sequence Identification Algorithm
 
-### FIG 1: Example sequence timeseries
+## FIG 1: Example sequence timeseries
 
 <br>
 Start-end parameter for example sequence timeseries:
@@ -122,7 +122,19 @@ df_example <- df_3hr[[167]] %>%
 ## create timeseries plot
 g <- ggplot(df_example) + 
   geom_hline(yintercept = 250, color = 'grey70') +
+  geom_text(
+    data = data.frame(x = max(df_example$ts), y = 250),
+    aes(x=x, y=y, label = '250 kg/m/s'),
+    # nudge_x = 3.1e5, nudge_y = 30, 
+    hjust = 1, vjust = -0.5, nudge_x = 8.5e5,
+    family = 'Segoe UI', size = 8/.pt,fontface = 'italic', color = 'grey30') + 
   geom_hline(yintercept = startend, color = 'grey70', linetype = 'dashed') +
+  geom_text(
+    data = data.frame(x = max(df_example$ts), y = 92),
+    aes(x=x, y=y, label = '92 kg/m/s'),
+    # nudge_x = 3.6e5, nudge_y = 30, 
+    hjust = 1, vjust = -0.5, nudge_x = 8.5e5,
+    family = 'Segoe UI', size = 8/.pt, fontface = 'italic', color = 'grey30') + 
   geom_ribbon(
     aes(x = ts, ymin = threshold1, ymax = rolling5),
     fill = roma.colors[4], alpha = 0.25) +
@@ -132,7 +144,10 @@ g <- ggplot(df_example) +
   geom_line(aes(x = ts, y = ivt, color = '3-Hour IVT')) + 
   geom_line(aes(x = ts, y = rolling5, color = '5-Day Moving Average IVT'), size = 0.75) + 
   scale_color_manual('', values = c('grey50', 'black')) + 
-  scale_x_datetime('Time (weeks)', date_breaks = '1 week') + 
+  scale_x_datetime(
+    'Time (weeks)', date_breaks = '1 week', 
+    limits = c(min(df_example$ts), max(df_example$ts)+days(10)),
+    expand = expansion(mult = c(0.025, 0.01))) + 
   scale_y_origin('IVT (kg/m/s)', breaks = 250*(0:10)) + 
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
@@ -148,10 +163,13 @@ g.ar <- ggplot(df_example) +
     fill = roma.colors[5]) + 
   geom_hline(yintercept = 0, color = roma.colors[5]) +
   geom_text(
-    data = data.frame(x = ymd_hms('2015-10-7 00:00:00'), y = 0),
+    data = data.frame(x = min(df_example$ts), y = 0),
     aes(x=x, y=y, label = 'AR'),
     hjust = 0, vjust = -0.5,
     family = 'Segoe UI', size = 8/.pt, fontface = 'plain') + 
+  scale_x_datetime(
+    limits = c(min(df_example$ts), max(df_example$ts)+days(10)),
+    expand = expansion(mult = c(0.025, 0.01))) + 
   theme_void()
 
 ## create bar chart of sequence days
@@ -162,10 +180,13 @@ g.seq <- ggplot(df_example) +
   geom_hline(yintercept = 0, color = roma.colors[4]) +
   geom_hline(yintercept = 1.5, color = 'white') + 
   geom_text(
-    data = data.frame(x = ymd_hms('2015-10-7 00:00:00'), y = 0),
+    data = data.frame(x = min(df_example$ts), y = 0),
     aes(x=x, y=y, label = 'Sequence'),
     hjust = 0, vjust = -0.5,
     family = 'Segoe UI', size = 8/.pt, fontface = 'plain') + 
+  scale_x_datetime(
+    limits = c(min(df_example$ts), max(df_example$ts)+days(10)),
+    expand = expansion(mult = c(0.025, 0.01))) + 
   theme_void()
 
 ## combine into one plot and save
@@ -174,217 +195,12 @@ ggsave('_figures/fig1_sequence.png', width = 6, height = 2, units = 'in', dpi = 
 
 ```
 
-## Section 2.2: Sequence Parameters
+# 3) Results: Hydrologic Hazard
 
-### Start-end parameter statistics
-
-<br>
-Statewide mean and standard deviation of start-end parameter: 
-
-```{r warning = FALSE}
-startend <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (i %in% index_ca) {
-        df_3hr[[i]] %>%
-          filter(wateryear(ts) %in% 1981:2010) %>% 
-          pull(ivt) %>% median(na.rm = TRUE)
-    } else NA
-  }
-
-## print mean & standard deviation
-cat(paste(
-  'Distribution Mean:', 
-  Mean(startend) %>% round(1), 'kg/m/s \n'))
-cat(paste(
-  'Distribution Standard Deviation:', 
-  sd(startend, na.rm = TRUE) %>% round(1), 'kg/m/s'))
-
-```
+## Numerical results: AR days and sequence days
 
 <br>
-Start-end parameter values by HUC4 hydrologic region: 
-
-```{r warning = FALSE}
-huc4 %>% 
-  st_drop_geometry %>% 
-  select(huc4, name) %>% 
-  cbind(
-    startend = setValues(grid_ca, startend) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c) %>% 
-  gt %>% 
-  tab_header('Start-End Parameter Values') %>% 
-  fmt_number(startend, decimals = 1) %>% 
-  cols_label(
-    huc4 = 'Hydrologic Region',
-    name = 'Name', 
-    startend = 'Start-End (kg/m/s)') %>% 
-  tab_options(
-    heading.background.color = '#d9d9d9', 
-    column_labels.background.color = '#f2f2f2')
-
-
-```
-
-### IVT5 > 250 threshold cutoff statistics
-
-<br> Statewide mean of threshold cutoff parameter:
-
-```{r}
-percentile <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (i %in% index_ca) {
-        df_3hr[[i]] %>%
-          filter(month(ts) %in% c(10:12,1:3)) %>% 
-          summarize(pct = sum(rolling5 <= 250)/length(rolling5)) %>% 
-          pull(pct)
-    } else NA
-  }
-
-cat(paste0(
-  'Distribution Mean: ', 
-  Mean(percentile*100) %>% round(1), '% \n'))
-
-```
-
-<br>
-Threshold cutoff parameter values by HUC4 hydrologic region: 
-
-```{r warning = FALSE}
-## list values by HUC4
-huc4 %>% 
-  st_drop_geometry %>% 
-  select(huc4, name) %>% 
-  cbind(
-    percentile = setValues(grid_ca, percentile) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c) %>% 
-  gt %>% 
-  tab_header('Data Percentile of IVT5 \u2265 250 kg/m/s') %>% 
-  fmt_percent(percentile, decimals = 1) %>% 
-  cols_label(
-    huc4 = 'Hydrologic Region',
-    name = 'Name', 
-    percentile = 'Percentile') %>% 
-  tab_options(
-    heading.background.color = '#d9d9d9', 
-    column_labels.background.color = '#f2f2f2')
-
-```
-
-# Section 3: Data and Methods
-
-## Section 3.4: Catalog Comparison
-
-### FIG 2: MERRA-2 versus SPEAR goodness-of-fit 
-
-<br>
-Calculate Kolmogorov-Smirnov test statistic:
-
-```{r}
-KS <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (i %in% index_ca) {
-      ## pull max IVT and duration for each sequence
-      merra <- df_24hr[[i]] %>% 
-        filter(wateryear(date) %in% 1981:2010) %>% 
-        filter(seq) %>%
-        group_by(seq.count) %>% 
-        summarize(maxivt = seq.maxivt[1], duration = seq.duration[1])
-      gfdl <- df_hist[[i]] %>% 
-        filter(wateryear(date) %in% 1981:2010) %>% 
-        filter(seq) %>%
-        group_by(seq.count,ens) %>% 
-        summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop')
-      
-      ## calculate K-S statistic for max IVT and duration
-      ## (filtering out locations where there are less than 5 sequences)
-      if (nrow(merra > 5)) {
-        ks.maxivt <- 
-          foreach (ensemble = unique(gfdl$ens), .combine = 'c') %do% {
-            if (nrow(gfdl %>% filter(ens==ensemble)) < 5) NA else {
-              tryCatch(
-                ks.test(
-                  merra$maxivt,
-                  gfdl %>% filter(ens==ensemble) %>% pull(maxivt),
-                  alternative = 'two')$p.value,
-                error = function(e) NA)
-            }
-          }
-        ks.duration <- 
-          foreach (ensemble = unique(gfdl$ens), .combine = 'c') %do% {
-            if (nrow(gfdl %>% filter(ens==ensemble)) < 5) NA else {
-              tryCatch(
-                ks.test(
-                  merra$duration, 
-                  gfdl %>% filter(ens==ensemble) %>% pull(duration),
-                  alternative = 'two')$p.value,
-                error = function(e) NA)
-            }
-          }
-        ## return results
-        data.frame(maxivt = ks.maxivt, duration = ks.duration, id = i)
-      } else NULL
-    }
-  }
-
-## record pass/fail for K-S test and attach spatial information
-KS <- KS %>% 
-  filter(!is.na(maxivt) & !is.na(duration)) %>% 
-  group_by(id) %>% 
-  summarize(
-    ks.maxivt = sum(maxivt>0.05)/length(maxivt),
-    ks.duration = sum(duration>0.05)/length(duration)) %>% 
-  left_join(raster.df(grid_ca), by = c('id' = 'value'))  
-  
-```
-
-<br> 
-Generate figure: 
-
-```{r fig.height=2}
-## set up plots
-g <- ggplot(KS) + 
-  scale_fill_scico(
-    'Percent of \nSimulations', labels = percent,
-    palette = 'bamako', direction = -1, limits = c(0,1)) + 
-  theme(
-    text = element_text(family = 'Segoe UI', size = 8, margin = margin(1,1,1,1)),
-    axis.title = element_blank(),
-    axis.text.x = element_text(angle = 90, vjust = 0.5),
-    legend.key.width = unit(0.15, 'in'))
-## plot intensity results
-g1 <- g + 
-  geom_raster(aes(x=x, y=y, fill=ks.maxivt)) + 
-  geom_sf(data = california, color = 'black', fill = NA, size = 0.25) + 
-  geom_text(
-    x = -116, y = 41, label = '(a)',
-    family = 'Segoe UI', size = 8/.pt, fontface = 'bold') + 
-  ggtitle('Sequence Intensity', subtitle = 'Peak 24-Hour IVT (kg/m/s)')
-## plot duration results
-g2 <- g + 
-  geom_raster(aes(x=x, y=y, fill=ks.duration)) + 
-  geom_sf(data = california, color = 'black', fill = NA, size = 0.25) + 
-  geom_text(
-    x = -116, y = 41, label = '(b)',
-    family = 'Segoe UI', size = 8/.pt, fontface = 'bold') + 
-  ggtitle('Sequence Duration', subtitle = '(days)') + 
-  theme(axis.text.y = element_text(color = NA))
-
-## combine and save
-ggarrange(
-  ggplot() + theme_void(),
-  g1 + guides(fill = guide_none()),
-  g2 + guides(fill = guide_none()),
-  get_legend(g2),
-  ggplot() + theme_void(),
-  align = 'h', widths = c(2,3,3,1,2), nrow = 1)
-ggsave('_figures/fig2_comparison.png', width=6, height=2, units = 'in')
-
-```
-
-# Section 4: Hydrologic Impacts
+Create dataframes
 
 ```{r}
 precip.extreme <- 
@@ -464,45 +280,7 @@ hydro <-
 
 ```
 
-## AR days and sequence days
-
-```{r}
-map_dfr(
-  .x = c('ar', 'seq'), 
-  .f = function(v1) {
-    map_dfr(
-      .x = c('all', 'precip', 'runoff', 'sm'),
-      .f = function(v2) {
-        hydro %>% filter(arseq == v1 & extreme == v2) %>% 
-          select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
-          raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c %>% 
-          data.frame(val = ., arseq = v1, extreme = v2, huc = 1801:1810)
-      })
-    }) %>% 
-  pivot_wider(names_from = c(arseq, extreme), values_from = val, names_sep = '.') %>%
-  gt %>% 
-  tab_header('Summary of AR Days and Sequence Days by Hydrologic Region') %>% 
-  tab_spanner(label = 'AR Days', columns = starts_with('ar')) %>% 
-  tab_spanner(label = 'Sequence Days', columns = starts_with('seq')) %>% 
-  fmt_percent(-huc, decimals = 1) %>% 
-  cols_label(
-    huc = 'Hydrologic Region',
-    ar.all = 'All Wet-Season Days',
-    ar.precip = 'Extreme Precipitation Days',
-    ar.runoff = 'Extreme Runoff Days', 
-    ar.sm = 'Extreme Soil Moisture Days',
-    seq.all = 'All Wet-Season Days',
-    seq.precip = 'Extreme Precipitation Days',
-    seq.runoff = 'Extreme Runoff Days', 
-    seq.sm = 'Extreme Soil Moisture Days') %>% 
-  tab_options(
-    heading.background.color = '#d9d9d9', 
-    column_labels.background.color = '#f2f2f2')
-  
-```
-
-<br>
-Statewide mean and standard deviation of wet-season AR day percentage:
+Statewide wet-season AR day percentage:
 
 ```{r}
 pct_ar <- hydro %>% 
@@ -520,7 +298,7 @@ cat(paste0(
 ```
 
 <br>
-Statewide mean and standard deviation of wet-season sequence day percentage:
+Statewide wet-season sequence day percentage:
 
 ```{r warning = FALSE}
 pct_seq <- hydro %>% 
@@ -537,7 +315,8 @@ cat(paste0(
 
 ```
 
-## Extreme precipitation days
+<br>
+Summary of extreme precipitation days:
 
 ```{r}
 huc4 %>% 
@@ -552,9 +331,9 @@ huc4 %>%
       filter(arseq == 'seq' & extreme == 'precip') %>% 
       select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
       raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c) %>% 
-  mutate(diff = pct_ar_precip - pct_seq_precip) %>% 
+  mutate(diff = pct_seq_precip - pct_ar_precip) %>% 
   gt %>% 
-  tab_header('AR Days as a Percentage of Extreme Precipitation Days') %>% 
+  tab_header('Percentage of Extreme Precipitation Days') %>% 
   fmt_percent(c(pct_ar_precip, pct_seq_precip, diff), decimals = 1) %>% 
   cols_label(
     huc4 = 'Hydrologic Region',
@@ -568,7 +347,71 @@ huc4 %>%
 
 ```
 
-## FIG 3: Hydrologic impacts of sequences
+<br>
+Summary of extreme runoff days:
+
+```{r}
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar_runoff = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'runoff') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq_runoff = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'runoff') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c) %>% 
+  mutate(diff = pct_seq_runoff - pct_ar_runoff) %>%
+  gt %>% 
+  tab_header('Percentage of Extreme Runoff Days') %>% 
+  fmt_percent(c(pct_ar_runoff, pct_seq_runoff, diff), decimals = 1) %>% 
+  cols_label(
+    huc4 = 'Hydrologic Region',
+    name = 'Name', 
+    pct_ar_runoff = 'AR Days',
+    pct_seq_runoff = 'Sequence Days',
+    diff = 'Difference') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+```
+
+<br>
+Summary of extreme soil moisture days: 
+
+```{r}
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar_sm = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'sm') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq_sm = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'sm') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c) %>% 
+  mutate(diff = pct_seq_sm - pct_ar_sm) %>%
+  gt %>% 
+  tab_header('Percentage of Extreme Soil Moisture Days') %>% 
+  fmt_percent(c(pct_ar_sm, pct_seq_sm, diff), decimals = 1) %>% 
+  cols_label(
+    huc4 = 'Hydrologic Region',
+    name = 'Name', 
+    pct_ar_sm = 'AR Days',
+    pct_seq_sm = 'Sequence Days',
+    diff = 'Difference') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+```
+
+## FIG 2: Hydrologic impacts of sequences
 
 Note: Additional labels were added to this figure in Inkscape.
 ```{r fig.height=3.5}
@@ -583,25 +426,26 @@ ggplot(hydro) +
     'Percentage of Days     ', palette = 'lapaz', direction = -1, 
     limits = c(0,1), labels = percent) + 
   theme(
+    text = element_text(family = 'Segoe UI', size = 8),
     axis.title = element_blank(),
     axis.text.x = element_text(angle = 90, vjust = 0.5),
     strip.background.y = element_blank(), strip.text.y = element_blank(),
-    text = element_text(family = 'Segoe UI', size = 8),
     plot.background = element_rect(fill = 'white', color = NA),
     strip.background.x = element_rect(fill = 'grey95', color = NA),
     legend.position = 'bottom',
     legend.key.width = unit(0.5, 'in'), 
     legend.margin = margin(0,0,0,0))
-ggsave('_figures/fig3_hydrology.png', width = 6, height = 3.5, units = 'in')
+ggsave('_figures/fig2.png', width = 6, height = 3.5, units = 'in')
 
 ```
 
+# 4) Results: Sequence Characteristics
 
-# Section 5: Projected Changes to Sequence Characteristics
+## 4.1) Historical Characteristics
 
-## Section 5.1: Sequence Frequency
+### Numerical results: Annual frequency statistics
 
-### Annual frequency statistics
+Statewide average annual sequence frequency:
 
 ```{r}
 nseq_ref <- 
@@ -619,6 +463,167 @@ nseq_ref <-
 nseq_ref <- nseq_ref / 30
 if (progress) cat('\n')
 
+cat(paste(
+  'Mean annual frequency:', 
+  Mean(nseq_ref) %>% round(2), 'sequences/year \n'))
+cat(paste(
+  'Standard deviation:', 
+  sd(nseq_ref, na.rm = TRUE) %>% round(2), 'sequences/year \n'))
+
+```
+
+<br>
+Statewide percentage of years with no sequences:
+
+```{r}
+nzero <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (is.null(df_hist[[i]])) NA else {
+      temp <- df_hist[[i]] %>% 
+        filter(wateryear(date) %in% 1981:2010) %>% 
+        filter(seq) %>% 
+        group_by(ens, seq.count) %>% 
+        summarize(wy = wateryear(date[1]), duration = seq.duration[1], .groups = 'drop') %>% 
+        count(wy,ens) %>% 
+        right_join(
+          expand.grid(wy = 1981:2010, ens = unique(temp$ens)), 
+          by = c('wy','ens')) %>% 
+        mutate(n = setNA(n,0))
+      temp %>% 
+        group_by(ens) %>% 
+        summarize(zero = sum(n==0)) %>% 
+        pull(zero) %>% mean
+    }
+  }
+if (progress) cat('\n')
+
+cat(paste(
+  'Mean number of years with no sequences:', 
+  Mean(nzero) %>% round(1), '\n'))
+cat(paste(
+  'Mean percentage of years with no sequences:', 
+  Mean(nzero/30) %>% percent(accuracy = 0.1)))
+
+```
+
+<br> 
+Statewide average ARs per sequence in the historic record:
+
+```{r}
+nar_ref <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_hist[[i]])) {
+      df_hist[[i]] %>% 
+        filter(seq) %>% 
+        filter(wateryear(date) %in% 1981:2010) %>% 
+        group_by(ens,seq.count) %>%
+        summarize(nar = length(unique(ar.count[!is.na(ar.count)])), .groups = 'drop') %>% 
+        summarize(nar.mean = Mean(nar)) %>% unlist %>% unname
+    } else NA
+  }
+if (progress) cat('\n')
+
+cat(paste(
+  'Mean number of ARs per sequence:', 
+  Mean(nar_ref) %>% round(1), '\n'))
+cat(paste(
+  'Standard deviation of ARs per sequence:', 
+  sd(nar_ref, na.rm = TRUE) %>% round(2), '\n'))
+
+```
+
+### FIG 3: Historical Sequence Intensity and Duration
+
+```{r}
+historical <-
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (i %in% index_ca) {
+      df_hist[[i]] %>% 
+        filter(wateryear(date) %in% 1981:2010) %>% 
+        filter(seq) %>% 
+        group_by(seq.count) %>% 
+        summarize(
+          maxivt = seq.maxivt[1], duration = seq.duration[1], ens = ens[1]) %>% 
+        summarize(
+          maxivt = mean(maxivt), duration = mean(duration), 
+          n.seq = length(seq.count)/length(unique(ens))/30) %>% 
+        cbind(
+          df_hist[[i]] %>%
+            filter(wateryear(date) %in% 1981:2010) %>% 
+            filter(ar) %>% 
+            group_by(ar.count) %>% 
+            summarize(pct.ar = mean(seq)) %>% 
+            summarize(pct.ar = mean(pct.ar)))
+    } else rep(NA,4)
+  }
+historical <- historical %>% 
+  cbind(raster.df(grid_ca) %>% select(-value)) %>% 
+  slice(index_ca)
+
+```
+
+```{r fig.width=3, fig.height=6}
+g1 <- ggplot(historical) + 
+  geom_point(aes(x=x, y=y, color = maxivt, size = n.seq)) + 
+  geom_sf(data = california, fill = NA, size = 0.25) + 
+  geom_point(aes(x=x, y=y, color = maxivt, size = n.seq), alpha = 0.75) + 
+  scale_color_gradient(
+    'Average \nPeak 24-hr IVT \n(kg/m/s)',
+    low = 'white', high = 'darkred') +
+  scale_size_area(max_size = 4, guide = guide_none()) + 
+  theme(
+    legend.position = c(0.92, 0.75),
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    # axis.text.x = element_text(angle = 90, vjust = 0.5),
+    text = element_text(family = 'Segoe UI', size = 8))
+
+g2 <- ggplot(historical) + 
+  geom_point(aes(x=x, y=y, color = duration, size = n.seq)) + 
+  geom_sf(data = california, fill = NA, size = 0.25) + 
+  geom_point(aes(x=x, y=y, color = duration, size = n.seq), alpha = 0.75) + 
+  scale_color_distiller(
+    'Average \nDuration \n(days)',
+    palette = 'Blues', direction = 1, breaks = 4*(0:10)) +
+  scale_size_area(max_size = 4, guide = guide_none()) + 
+  theme(
+    legend.position = c(0.85, 0.75),
+    axis.title = element_blank(),
+    # axis.text.y = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    text = element_text(family = 'Segoe UI', size = 8))
+
+g3 <- ggplot(historical) + 
+  geom_point(aes(x=x, y=y, size = n.seq)) + 
+  scale_size_area('Annual Sequence Frequency', max_size = 4, breaks = 1:3) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    legend.position = 'bottom')
+  
+g1 + g2 + plot_spacer() + 
+  plot_layout(nrow = 3, heights = c(10,10,1)) +
+  inset_element(
+    get_legend(g3), 
+    left = 0.1, bottom = 0, top = 1, right = 1, 
+    ignore_tag = TRUE, align_to = 'full', on_top = TRUE) + 
+  plot_annotation(tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') &
+  theme(
+    plot.tag = element_text(family = 'Segoe UI', face = 'bold', size = 10))
+ggsave('_figures/fig3_historic.png', width = 3, height = 6, units = 'in')
+
+```
+
+## 4.2) Projected Frequency Change
+
+### Numerical results: Projected change in annual frequency
+
+<br>
+Create dataframes
+
+```{r}
 nseq_ssp245 <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
@@ -663,6 +668,42 @@ nseq_ssp585 <-
 nseq_ssp585 <- nseq_ssp585 / 10
 if (progress) cat('\n')
 
+nseq_ssp245_eoc <-
+  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (is.null(df_ssp245[[i]])) NA else {
+      temp <- df_ssp245[[i]] %>%
+        filter(wateryear(date) %in% 2061:2090) %>% 
+        filter(seq) %>%
+        group_by(ens, seq.count) %>%
+        summarize(duration = seq.duration[1], .groups = 'drop')
+      nrow(temp)/length(unique(temp$ens))
+    }
+  }
+nseq_ssp245_eoc <- nseq_ssp245_eoc / 30
+if (progress) cat('\n')
+
+nseq_ssp585_eoc <-
+  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (is.null(df_ssp585[[i]])) NA else {
+      temp <- df_ssp585[[i]] %>%
+        filter(wateryear(date) %in% 2061:2090) %>% 
+        filter(seq) %>%
+        group_by(ens, seq.count) %>%
+        summarize(duration = seq.duration[1], .groups = 'drop')
+      nrow(temp)/length(unique(temp$ens))
+    }
+  }
+nseq_ssp585_eoc <- nseq_ssp585_eoc / 30
+if (progress) cat('\n')
+
+```
+
+<br>
+Change in sequence frequency by decade:
+
+```{r}
 frequency <- 
   left_join(
     nseq_ssp245 %>% as.data.frame %>%
@@ -690,117 +731,13 @@ frequency <-
   pivot_longer(cols = c(ssp245, ssp585), names_to = 'sim') %>% 
   mutate(
     sim_name = case_when(
-      sim == 'ssp245' ~ 'SSP 2-4.5 ("Middle of the Road")',
-      sim == 'ssp585' ~ 'SSP 5-8.5 ("Upper End")') %>% 
+      sim == 'ssp245' ~ 'SSP 2-4.5 (Medium)',
+      sim == 'ssp585' ~ 'SSP 5-8.5 (Very High)') %>% 
       factor %>% factor(levels = levels(.))) %>%
   mutate(
     id = 1:nrow(.),
     tag = ifelse(id %in% 1:2, paste0('(', letters[id], ')'), NA))
 
-```
-
-Average annual sequence frequency:
-
-```{r}
-cat(paste(
-  'Mean annual frequency:', 
-  Mean(nseq_ref) %>% round(2), 'sequences/year \n'))
-
-```
-
-<br>
-Percentage of years with no sequences:
-
-```{r}
-nzero <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_hist[[i]])) NA else {
-      temp <- df_hist[[i]] %>% 
-        filter(wateryear(date) %in% 1981:2010) %>% 
-        filter(seq) %>% 
-        group_by(ens, seq.count) %>% 
-        summarize(wy = wateryear(date[1]), duration = seq.duration[1], .groups = 'drop') %>% 
-        count(wy,ens) %>% 
-        right_join(
-          expand.grid(wy = 1981:2010, ens = unique(temp$ens)), 
-          by = c('wy','ens')) %>% 
-        mutate(n = setNA(n,0))
-      temp %>% 
-        group_by(ens) %>% 
-        summarize(zero = sum(n==0)) %>% 
-        pull(zero) %>% mean
-    }
-  }
-if (progress) cat('\n')
-
-cat(paste(
-  'Mean number of years with no sequences:', 
-  Mean(nzero) %>% round(1), '\n'))
-cat(paste(
-  'Mean annual frequency of years with no sequences:', 
-  Mean(nzero/30) %>% round(2)))
-
-```
-
-### Change in annual frequency 
-
-```{r}
-nseq_ssp245_total <-
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp245[[i]])) NA else {
-      temp <- df_ssp245[[i]] %>%
-        filter(seq) %>%
-        group_by(ens, seq.count) %>%
-        summarize(duration = seq.duration[1], .groups = 'drop')
-      nrow(temp)/length(unique(temp$ens))
-    }
-  }
-nseq_ssp245_total <- nseq_ssp245_total / diff(range(year(ts_decades)))
-if (progress) cat('\n')
-
-nseq_ssp585_total <-
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp585[[i]])) NA else {
-      temp <- df_ssp585[[i]] %>%
-        filter(seq) %>%
-        group_by(ens, seq.count) %>%
-        summarize(duration = seq.duration[1], .groups = 'drop')
-      nrow(temp)/length(unique(temp$ens))
-    }
-  }
-nseq_ssp585_total <- nseq_ssp585_total / diff(range(year(ts_decades)))
-if (progress) cat('\n')
-
-```
-
-Additive change in annual sequence frequency:
-
-```{r}
-cat('SSP2-4.5\n')
-cat(paste(
-  'Mean change:', 
-  Mean(nseq_ssp245_total-nseq_ref) %>% round(2), 'sequences/year\n'))
-cat(paste(
-  'Standard deviation of change:', 
-  sd(nseq_ssp245_total-nseq_ref, na.rm = TRUE) %>% round(2), 'sequences/year\n\n'))
-
-cat('SSP5-8.5\n')
-cat(paste(
-  'Mean change:', 
-  Mean(nseq_ssp585_total-nseq_ref) %>% round(2), 'sequences/year\n'))
-cat(paste(
-  'Standard deviation of change:', 
-  sd(nseq_ssp585_total-nseq_ref, na.rm = TRUE) %>% round(2), 'sequences/year\n\n'))
-
-```
-
-<br>
-Change in sequence frequency by decade:
-
-```{r}
 frequency %>% 
   group_by(decade_name, sim) %>% 
   summarize(diff.mean = mean(value-hist), diff.sd = sd(value-hist), .groups = 'drop') %>% 
@@ -824,6 +761,8 @@ frequency %>%
 
 ### FIG 4: Projected change in sequence annual frequency by decade
 
+Note: Additional labels were added to this figure in Inkscape.
+
 ```{r fig.height=3.5}
 g.additive <- 
   ggplot(frequency) + 
@@ -841,7 +780,8 @@ g.additive <-
   scale_color_manual(values = colors.huc, guide = guide_none()) + 
   scale_x_discrete(expand = expansion(mult = 0.035)) + 
   scale_y_continuous(
-    'Frequency Change Relative to WY 1981-2010',
+    # 'Frequency Change Relative to WY 1981-2010',
+    'Change in Sequences/Year',
     # labels = percent, 
     expand = expansion(mult = 0.1)) + 
   theme(
@@ -867,38 +807,27 @@ gmap <- ggplot(huc4) +
   guides(fill = guide_legend(nrow = 1)) +
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
-    panel.border = element_rect(fill = NA, size = 0.25),
-    axis.line = element_blank(),
+    # panel.border = element_rect(fill = NA, size = 0.25),
+    # axis.line = element_blank(),
     axis.text.x = element_text(angle = 90, vjust = 0.5),
     axis.title = element_blank(), 
     legend.position = 'bottom',
     legend.background = element_rect(fill = NA),
+    legend.title = element_text(margin = margin(0,0,0,0)),
+    legend.text = element_text(margin = margin(0,0,0,0)),
     legend.margin = margin(c(0,0,0,0)))
 gmap_blank <- gmap + guides(fill = guide_none())
 
 layout = 'AAAB\nCCCC'
 g.additive + gmap_blank + get_legend(gmap) + plot_spacer() + 
   plot_layout(design = layout, heights = c(10,1))
-ggsave('_figures/fig4_frequency.png', width = 6, height = 3.5, units = 'in')
+ggsave('_figures/fig4.png', width = 6, height = 3.5, units = 'in')
 
 ```
 
-### Average ARs per sequence
+### Change in number of ARs per sequence
 
 ```{r}
-nar_ref <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (!is.null(df_hist[[i]])) {
-      df_hist[[i]] %>% 
-        filter(seq) %>% 
-        filter(wateryear(date) %in% 1981:2010) %>% 
-        group_by(ens,seq.count) %>%
-        summarize(nar = length(unique(ar.count[!is.na(ar.count)])), .groups = 'drop') %>% 
-        summarize(nar.mean = Mean(nar)) %>% unlist %>% unname
-    } else NA
-  }
-
 nar_ssp245 <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
@@ -907,14 +836,13 @@ nar_ssp245 <-
         mutate(yr = year(date)) %>% 
         right_join(decades, by = 'yr') %>% 
         filter(seq) %>% 
-        group_by(ens, seq.count, decade) %>%
+        group_by(ens, decade, seq.count) %>% 
         summarize(nar = length(unique(ar.count[!is.na(ar.count)])), .groups = 'drop') %>% 
         group_by(decade) %>% 
-        summarize(nar.mean = Mean(nar)) %>% 
+        summarize(nar = mean(nar)) %>% 
         right_join(data.frame(decade = 1:7), by = 'decade') %>% 
         arrange(decade) %>% 
-        mutate(nar.mean = setNA(nar.mean,0)) %>% 
-        pull(nar.mean)
+        pull(nar)
     } else rep(NA,7)
   }
 if (progress) cat('\n')
@@ -927,40 +855,34 @@ nar_ssp585 <-
         mutate(yr = year(date)) %>% 
         right_join(decades, by = 'yr') %>% 
         filter(seq) %>% 
-        group_by(ens, seq.count, decade) %>%
+        group_by(ens, decade, seq.count) %>% 
         summarize(nar = length(unique(ar.count[!is.na(ar.count)])), .groups = 'drop') %>% 
         group_by(decade) %>% 
-        summarize(nar.mean = Mean(nar)) %>% 
+        summarize(nar = mean(nar)) %>% 
         right_join(data.frame(decade = 1:7), by = 'decade') %>% 
         arrange(decade) %>% 
-        mutate(nar.mean = setNA(nar.mean,0)) %>% 
-        pull(nar.mean)
+        pull(nar)
     } else rep(NA,7)
   }
 if (progress) cat('\n')
 
 ```
 
-<br>
-Mean and standard deviation of average ARs per sequence in historic record:
-
 ```{r}
-cat(paste(
-  'Mean number of ARs per sequence:', 
-  Mean(nar_ref) %>% round(1), '\n'))
-cat(paste(
-  'Standard deviation of ARs per sequence:', 
-  sd(nar_ref, na.rm = TRUE) %>% round(2), '\n'))
-
-```
-
-<br>
-Case study of projected average ARs per sequence:
-
-```{r}
-nar_ssp585 %>% as.data.frame %>% 
-  filter(grid_hucrep[]==1801) %>%
-  pivot_longer(cols = starts_with('V'), names_to = 'decade') %>% 
+nar <- 
+  left_join(
+    nar_ssp245 %>% as.data.frame %>%
+      cbind(hist = nar_ref) %>% 
+      cbind(huc = grid_hucrep[]) %>% 
+      filter(huc > 0) %>% 
+      pivot_longer(cols = starts_with('V'), names_to = 'decade') %>% 
+      rename(ssp245 = value),
+    nar_ssp585 %>% as.data.frame %>%
+      cbind(huc = grid_hucrep[]) %>% 
+      filter(huc > 0) %>% 
+      pivot_longer(cols = starts_with('V'), names_to = 'decade') %>% 
+      rename(ssp585 = value),
+    by = c('huc', 'decade')) %>% 
   mutate(
     decade = toNumber(gsub('V', '', decade)),
     decade_name = case_when(
@@ -970,59 +892,151 @@ nar_ssp585 %>% as.data.frame %>%
       decade==4 ~ '2050s',
       decade==5 ~ '2060s',
       decade==6 ~ '2070s',
-      decade==7 ~ '2080s') %>% factor) %>%
-  mutate(value = round(value,2)) %>% 
-  transmute(decade_name, value) %>%
-  gt %>% 
-  tab_header(
-    'ARs per Sequence', 
-    subtitle = 'Emissions Scenario SSP5-8.5, Hydrologic Region 1801') %>% 
+      decade==7 ~ '2080s') %>% factor) %>% 
+  pivot_longer(cols = c(ssp245, ssp585), names_to = 'sim') %>% 
+  mutate(
+    sim_name = case_when(
+      sim == 'ssp245' ~ 'SSP 2-4.5 (Medium)',
+      sim == 'ssp585' ~ 'SSP 5-8.5 (Very High)') %>% 
+      factor %>% factor(levels = levels(.)))
+
+nar %>% 
+  group_by(decade_name, sim) %>% 
+  summarize(diff.mean = mean(value-hist), diff.sd = sd(value-hist), .groups = 'drop') %>% 
+  pivot_wider(names_from = sim, values_from = c(diff.mean, diff.sd), names_sep = '.') %>%
+  gt() %>% 
+  tab_header('Change in ARs per Sequence') %>% 
+  tab_spanner('SSP2-4.5', columns = ends_with('245')) %>% 
+  tab_spanner('SSP5-8.5', columns = ends_with('585')) %>%
+  fmt_number(starts_with('diff'), decimals = 2) %>% 
   cols_label(
     decade_name = 'Decade',
-    value = 'ARs/Sequence') %>%
+    diff.mean.ssp245 = 'Mean',
+    diff.sd.ssp245 = 'Std.Dev.',
+    diff.mean.ssp585 = 'Mean',
+    diff.sd.ssp585 = 'Std.Dev') %>% 
   tab_options(
     heading.background.color = '#d9d9d9', 
     column_labels.background.color = '#f2f2f2')
-  
+
 ```
 
-### Proportion of ARs falling in sequences by category
+### Change in percentage of ARs falling within sequences
 
 ```{r}
-cats_inseq <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
-    if (progress) setTxtProgressBar(pb, i)
-    if (is.null(df_hist[[i]])) rep(NA,5) else {
+pctar_ref <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_hist[[i]])) {
       df_hist[[i]] %>% 
-        filter(wateryear(date) %in% 1981:2010) %>% 
         filter(ar) %>% 
-        group_by(ar.count,ens) %>% 
-        summarize(cat = ar.cat[1], seq = seq[1], .groups = 'drop') %>% 
-        count(seq,cat) %>%
-        group_by(cat) %>% 
-        mutate(pct = n/sum(n)) %>% 
-        ungroup %>% filter(seq) %>% 
-        right_join(data.frame(cat = 1:5), by = 'cat') %>% 
-        arrange(cat) %>% pull(pct)
-    }
+        filter(wateryear(date) %in% 1981:2010) %>% 
+        group_by(ens,ar.count) %>%
+        summarize(pctar = sum(seq)/length(seq)>0, .groups = 'drop') %>% 
+        pull(pctar) %>% mean
+    } else NA
   }
+if (progress) cat('\n')
 
-data.frame(cat = 1:5, pct = cats_inseq %>% apply(2, Mean)) %>% 
-  gt %>% 
-  tab_header('Percentage of ARs Occurring Within Sequences') %>% 
-  fmt_percent(pct, decimals = 1) %>% 
-  cols_label(cat = 'AR Category', pct = 'Average Percent') %>% 
+pctar_ssp245 <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_ssp245[[i]])) {
+      df_ssp245[[i]] %>% 
+        mutate(yr = year(date)) %>% 
+        right_join(decades, by = 'yr') %>% 
+        filter(ar) %>% 
+        group_by(ens, decade, ar.count) %>% 
+        summarize(pctar = sum(seq)/length(seq)>0, .groups = 'drop') %>% 
+        group_by(decade) %>% 
+        summarize(pctar = mean(pctar)) %>% 
+        right_join(data.frame(decade = 1:7), by = 'decade') %>% 
+        arrange(decade) %>% 
+        pull(pctar)
+    } else rep(NA,7)
+  }
+if (progress) cat('\n')
+
+pctar_ssp585 <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_ssp585[[i]])) {
+      df_ssp585[[i]] %>% 
+        mutate(yr = year(date)) %>% 
+        right_join(decades, by = 'yr') %>% 
+        filter(ar) %>% 
+        group_by(ens, decade, ar.count) %>% 
+        summarize(pctar = sum(seq)/length(seq)>0, .groups = 'drop') %>% 
+        group_by(decade) %>% 
+        summarize(pctar = mean(pctar)) %>% 
+        right_join(data.frame(decade = 1:7), by = 'decade') %>% 
+        arrange(decade) %>% 
+        pull(pctar)
+    } else rep(NA,7)
+  }
+if (progress) cat('\n')
+
+```
+
+```{r}
+pctar <- 
+  left_join(
+    pctar_ssp245 %>% as.data.frame %>%
+      cbind(hist = pctar_ref) %>% 
+      cbind(huc = grid_hucrep[]) %>% 
+      filter(huc > 0) %>% 
+      pivot_longer(cols = starts_with('V'), names_to = 'decade') %>% 
+      rename(ssp245 = value),
+    pctar_ssp585 %>% as.data.frame %>%
+      cbind(huc = grid_hucrep[]) %>% 
+      filter(huc > 0) %>% 
+      pivot_longer(cols = starts_with('V'), names_to = 'decade') %>% 
+      rename(ssp585 = value),
+    by = c('huc', 'decade')) %>% 
+  mutate(
+    decade = toNumber(gsub('V', '', decade)),
+    decade_name = case_when(
+      decade==1 ~ '2020s',
+      decade==2 ~ '2030s',
+      decade==3 ~ '2040s',
+      decade==4 ~ '2050s',
+      decade==5 ~ '2060s',
+      decade==6 ~ '2070s',
+      decade==7 ~ '2080s') %>% factor) %>% 
+  pivot_longer(cols = c(ssp245, ssp585), names_to = 'sim') %>% 
+  mutate(
+    sim_name = case_when(
+      sim == 'ssp245' ~ 'SSP 2-4.5 (Medium)',
+      sim == 'ssp585' ~ 'SSP 5-8.5 (Very High)') %>% 
+      factor %>% factor(levels = levels(.)))
+
+pctar %>% 
+  group_by(decade_name, sim) %>% 
+  summarize(diff.mean = mean(value-hist), diff.sd = sd(value-hist), .groups = 'drop') %>% 
+  pivot_wider(names_from = sim, values_from = c(diff.mean, diff.sd), names_sep = '.') %>%
+  gt() %>% 
+  tab_header('Change in Percentage of ARs Within Sequences') %>% 
+  tab_spanner('SSP2-4.5', columns = ends_with('245')) %>% 
+  tab_spanner('SSP5-8.5', columns = ends_with('585')) %>%
+  fmt_percent(starts_with('diff'), decimals = 1) %>% 
+  cols_label(
+    decade_name = 'Decade',
+    diff.mean.ssp245 = 'Mean',
+    diff.sd.ssp245 = 'Std.Dev.',
+    diff.mean.ssp585 = 'Mean',
+    diff.sd.ssp585 = 'Std.Dev') %>% 
   tab_options(
     heading.background.color = '#d9d9d9', 
     column_labels.background.color = '#f2f2f2')
 
 ```
 
-## Section 5.2: Intensity
+## 4.3) Projected Intensity Change
 
-### Prepare data
+### Numerical results: Projected relative change in sequence intensity 
 
-Calculate historic and projected distribution statistics (median, IQR, and 95th percentile) for sequence intensity and sequence duration: 
+<br>
+Create dataframes
 
 ```{r}
 stats_ref <- 
@@ -1036,46 +1050,44 @@ stats_ref <-
         summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
         summarize(
           maxivt.med = median(maxivt),
-          maxivt.iqr = IQR(maxivt),
           maxivt.q95 = quantile(maxivt,0.95),
           duration.med = median(duration),
-          duration.iqr = IQR(duration),
           duration.q95 = quantile(duration,0.95))
     } else rep(NA,4)
   }
 if (progress) cat('\n')
-stats_ssp245 <- 
+
+stats_ssp245_eoc <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
     if (!is.null(df_ssp245[[i]])) {
       df_ssp245[[i]] %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         filter(seq) %>% 
         group_by(ens,seq.count) %>%
         summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
         summarize(
           maxivt.med = median(maxivt, na.rm = TRUE),
-          maxivt.iqr = IQR(maxivt, na.rm = TRUE),
           maxivt.q95 = quantile(maxivt,0.95, na.rm = TRUE),
           duration.med = median(duration, na.rm = TRUE),
-          duration.iqr = IQR(duration, na.rm = TRUE),
           duration.q95 = quantile(duration,0.95, na.rm = TRUE))
     } else rep(NA,4)
   }
 if (progress) cat('\n')
-stats_ssp585 <- 
+
+stats_ssp585_eoc <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
     if (!is.null(df_ssp585[[i]])) {
       df_ssp585[[i]] %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         filter(seq) %>% 
         group_by(ens,seq.count) %>%
         summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
         summarize(
           maxivt.med = median(maxivt, na.rm = TRUE),
-          maxivt.iqr = IQR(maxivt, na.rm = TRUE),
           maxivt.q95 = quantile(maxivt,0.95, na.rm = TRUE),
           duration.med = median(duration, na.rm = TRUE),
-          duration.iqr = IQR(duration, na.rm = TRUE),
           duration.q95 = quantile(duration,0.95, na.rm = TRUE))
     } else rep(NA,4)
   }
@@ -1084,17 +1096,19 @@ if (progress) cat('\n')
 stats <- 
   rbind(
     df_hist[[which(grid_hucrep[]==1804)]] %>% 
+      filter(wateryear(date) %in% 1981:2010) %>% 
       filter(seq) %>% 
-      filter(year(date) %in% 1981:2010) %>% 
       group_by(ens,seq.count) %>%
       summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
       mutate(source = 'hist'),
     df_ssp245[[which(grid_hucrep[]==1804)]] %>% 
+      filter(wateryear(date) %in% 2061:2090) %>% 
       filter(seq) %>% 
       group_by(ens,seq.count) %>%
       summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
       mutate(source = 'ssp245'),
     df_ssp585[[which(grid_hucrep[]==1804)]] %>% 
+      filter(wateryear(date) %in% 2061:2090) %>% 
       filter(seq) %>% 
       group_by(ens,seq.count) %>%
       summarize(maxivt = seq.maxivt[1], duration = seq.duration[1], .groups = 'drop') %>% 
@@ -1108,15 +1122,15 @@ stats <-
 
 ```
 
-Filter distribution statistics to focus on sequence intensity:
+Filter distribution statistics to focus on sequence intensity
 
 ```{r}
 intensity <- 
   cbind(
-    (stats_ssp245 / stats_ref) %>%
+    (stats_ssp245_eoc / stats_ref) %>%
       select(starts_with('maxivt')) %>%
       setNames(gsub('maxivt', 'ssp245', names(.))),
-    (stats_ssp585 / stats_ref) %>%
+    (stats_ssp585_eoc / stats_ref) %>%
       select(starts_with('maxivt')) %>%
       setNames(gsub('maxivt', 'ssp585', names(.)))) %>%
     cbind(raster.df(grid_ca) %>% select(-value)) %>%
@@ -1130,20 +1144,17 @@ intensity <-
         factor %>% factor(levels = levels(.)[2:1]),
       stat_name = case_when(
         stat == 'med' ~ 'Median',
-        stat == 'iqr' ~ 'Interquartile Range (IQR)', 
         stat == 'q95' ~ '95th Percentile') %>% 
         factor %>% factor(levels = levels(.)[3:1]))
 
 ```
-
-### Relative intensity change 
 
 <br>
 Relative intensity change for HUC1804:
 
 ```{r}
 left_join(
-  stats_ssp245 %>% 
+  stats_ssp245_eoc %>% 
     select(starts_with('maxivt')) %>% 
     cbind(huc = grid_hucrep[]) %>% 
     filter(huc == 1804) %>% 
@@ -1160,7 +1171,6 @@ left_join(
     stat = gsub('maxivt.', '', stat),
     stat_name = case_when(
       stat == 'med' ~ 'Median',
-      stat == 'iqr' ~ 'Interquartile Range (IQR)', 
       stat == 'q95' ~ '95th Percentile') %>% 
       factor %>% factor(levels = levels(.)[3:1])) %>% 
   mutate(fact = ssp245/hist, pct = fact-1) %>% 
@@ -1207,7 +1217,6 @@ intensity %>%
   cols_label(
     sim_name = 'Emission Scenario',
     mean.med = 'Mean', sd.med = 'Std.Dev.',
-    mean.iqr = 'Mean', sd.iqr = 'Std.Dev',
     mean.q95 = 'Mean', sd.q95 = 'Std.Dev.') %>% 
   tab_options(
     heading.background.color = '#d9d9d9', 
@@ -1217,26 +1226,35 @@ intensity %>%
 
 ### FIG 5: Sequence intensity change
 
-Top row (a): 
+Top row (a,b): 
 
 ```{r fig.height=2}
-g1 <- ggplot(stats) + 
+a <- ggplot(stats) +
+  geom_ribbon(
+    aes(x = maxivt, group = source, ymin = source_name, ymax = source_name, fill = source),
+    color = NA, alpha = 0) + 
   stat_boxplot_custom(
     aes(x = maxivt, y = source_name, group = paste(source,ens), fill = source),
     qs = c(.05, .25, .5, .75, .95),
     outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.25,
     show.legend = FALSE) + 
-  scale_fill_manual(values = scico(7, palette = 'roma')[3:1]) +
+  scale_fill_manual(
+    'Climate Scenario', 
+    labels = c('Historic', 'SSP 2-4.5', 'SSP 5-8.5'), 
+    values = scico(7, palette = 'roma')[3:1], 
+    guide = guide_legend(
+      override.aes = list(
+        color = scico(7, palette = 'roma')[3:1], size = 0.25, alpha = 0.5))) +
   scale_x_continuous(
     'Maximum 24-Hour IVT (kg/m/s)', breaks = 250*(0:10), 
-    limits = c(250,NA), expand = expansion(mult = c(0.005,0.05))) +
+    limits = c(250,1250), expand = expansion(mult = c(0.005,0.05))) +
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
     panel.grid.major.x = element_line(size = 0.25),
-    axis.title.y = element_blank()) + 
-  ggtitle('Sequence Intensity')
-
-g1 + 
+    axis.title.y = element_blank(),
+    legend.position = 'top',
+    legend.margin = margin(1,1,1,1)) + #c(0.9, 0.75)) + 
+  ggtitle('Sequence Intensity') + 
   geom_segment(
     x = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% median,
     xend = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% median,
@@ -1251,67 +1269,13 @@ g1 +
     x = stats %>% filter(source == 'ssp585') %>% pull(maxivt) %>% median,
     xend = stats %>% filter(source == 'ssp585') %>% pull(maxivt) %>% median,
     y = 0.6, yend = 1.4,
-    color = scico(11, palette = 'roma')[1]) +
-  geom_text(
-    aes(x = 1300, y = 3.25, label = '(a)'),
-    size = 10/.pt, family = 'Segoe UI', fontface = 'bold') 
-ggsave('_figures/fig5a.png', width = 6, height = 2, units = 'in')
-
-```
-
-Middle row (b,c): 
-
-```{r fig.height=2}
-ggplot(stats %>% filter(source != 'ssp585')) + 
-  ## medians
-  geom_vline(
-    xintercept = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% median,
-    size = 0.75, color = baker[3]) +
-  geom_vline(
-    xintercept = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% median,
-    size = 0.75, color = baker[3]) +
-  ## boxplot
-  stat_boxplot_custom(
-    aes(x = maxivt, y = source_name, fill = source),
-    qs = c(.05, .25, .5, .75, .95),
-    outlier.size = 0.5, size = 0.25, outlier.alpha = 0, alpha = 0.25,
-    show.legend = FALSE) + 
-  scale_fill_manual(values = scico(7, palette = 'roma')[c(3:1)]) +
-  ## IQRs
-  geom_errorbar(
-    data = data.frame(
-      xmin = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% quantile(0.25),
-      xmax = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% quantile(0.75)),
-    aes(xmin=xmin, xmax=xmax, y=1.75), 
-    width = 0.1, size = 1, color = baker[2]) +
-  geom_errorbar(
-    data = data.frame(
-      xmin = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% quantile(0.25),
-      xmax = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% quantile(0.75)),
-    aes(xmin=xmin, xmax=xmax, y=1.25), 
-    width = 0.1, size = 1, color = baker[2]) +
-  ## 95th quantiles
-  geom_vline(
-    xintercept = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% quantile(0.95),
-    size = 0.75, color = baker[5], linetype = 'dashed', alpha = 0.75) +
-  geom_vline(
-    xintercept = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% quantile(0.95),
-    size = 0.75, color = baker[5], linetype = 'dashed', alpha = 0.75) +
-  ## plot specs
-  scale_x_continuous(
-    'Maximum 24-Hour IVT (kg/m/s)', breaks = 250*(0:10), 
-    limits = c(250,NA), expand = expansion(mult = c(0.005,0.05))) +
-  theme(
-    text = element_text(family = 'Segoe UI', size = 8),
-    panel.grid.major.x = element_line(size = 0.25),
-    axis.title.x = element_text(hjust = 0.25),
-    axis.title.y = element_blank()) 
-ggsave('_figures/fig5b.png', width=6, height=1.8, units = 'in')
+    color = scico(11, palette = 'roma')[1])
+a
 
 ```
 
 ```{r fig.height=2}
-ggplot() +
+b <- ggplot() +
   geom_tile(
     data = raster.df(grid_hucrep),
     aes(x=x, y=y, fill = value==1804)) + 
@@ -1325,64 +1289,113 @@ ggplot() +
   geom_sf(data = cal, fill = NA, color = 'black', size = 0.25) +
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
-    panel.border = element_rect(fill = NA, size = 0.25),
-    axis.line = element_blank(),
     axis.text.x = element_text(angle = 90, vjust = 0.5),
     axis.title = element_blank(), 
     legend.background = element_rect(fill = NA))
-ggsave('_figures/fig5c.png', width=2, height=2, units = 'in')
+b
 
 ```
 
-Bottom row (d,e,f): 
+Bottom row (c,d,e):
 
 ```{r fig.height=2}
-intensity %>% 
+c <- ggplot(stats %>% filter(source != 'ssp585')) + 
+  ## medians
+  geom_vline(
+    xintercept = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% median,
+    size = 0.75, color = baker[3]) +
+  geom_vline(
+    xintercept = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% median,
+    size = 0.75, color = baker[3]) +
+  ## boxplot
+  stat_boxplot_custom(
+    aes(x = maxivt, y = source_name, fill = source),
+    qs = c(.05, .25, .5, .75, .95),
+    outlier.size = 0.5, size = 0.25, outlier.alpha = 0, alpha = 0.25,
+    width = 0.5,
+    show.legend = FALSE) + 
+  scale_fill_manual(values = scico(7, palette = 'roma')[c(3:1)]) +
+  ## 95th quantiles
+  geom_vline(
+    xintercept = stats %>% filter(source == 'hist') %>% pull(maxivt) %>% quantile(0.95),
+    size = 0.75, color = roma.colors[5], linetype = 'dashed') +
+  geom_vline(
+    xintercept = stats %>% filter(source == 'ssp245') %>% pull(maxivt) %>% quantile(0.95),
+    size = 0.75, color = roma.colors[5], linetype = 'dashed') +
+  ## plot specs
+  scale_x_continuous(
+    'Maximum 24-Hour IVT (kg/m/s)', breaks = 250*(0:10), 
+    limits = c(250,1250), expand = expansion(mult = c(0.005,0.05))) +
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    panel.grid.major.x = element_line(size = 0.25),
+    axis.title.x = element_text(hjust = 0.25),
+    axis.title.y = element_blank()) 
+c
+
+```
+
+```{r fig.height=2}
+de <- intensity %>% 
   mutate(
     id = 1:nrow(.),
     tag = ifelse(id %in% 1:3, paste0('(', letters[4:6], ')'), NA),
     sim_name = factor(sim_name, levels = rev(levels(sim_name)))) %>% 
   select(-id) %>% 
+  filter(stat != 'iqr') %>% 
   ggplot() +
   geom_vline(xintercept = 0, color = 'grey50', size = 0.35) +
   geom_density(
     aes(x = value-1, group = sim_name, fill = sim_name, color = sim_name),
     alpha = 0.35, size = 0.35) +
-  geom_text(
-    aes(x = 1.15, y = 12.5, label = tag),
-    size = 10/.pt, family = 'Segoe UI', fontface = 'bold') + 
+  # geom_text(
+  #   aes(x = 1.15, y = 12.5, label = tag),
+  #   size = 10/.pt, family = 'Segoe UI', fontface = 'bold') + 
   scale_color_manual(
-    'Climate\nScenario', values = scico(7, palette = 'roma')[2:1]) + 
+    'Climate Scenario', values = scico(7, palette = 'roma')[2:1]) + 
   scale_fill_manual(
-    'Climate\nScenario', values = scico(7, palette = 'roma')[2:1]) + 
+    'Climate Scenario', values = scico(7, palette = 'roma')[2:1]) + 
+  guides(color = guide_none(), fill = guide_none()) + 
   facet_wrap(~stat_name, nrow = 1) + 
   scale_x_continuous(
     'Percent Change Relative to 1981-2010', labels = percent) +
   scale_y_origin('Probability Density') +
-  coord_cartesian(xlim = c(NA, 1.25)) + 
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
     legend.margin = margin(0,0,0,0),
-    legend.position = c(0.95,0.5),
+    legend.position = 'top', #c(0.85,0.5),
     panel.grid.major.x = element_line(size = 0.25),
     strip.placement = 'outside',
     strip.background = element_rect(fill = 'grey95', color = NA),
     strip.text = element_text(size = 8, margin = margin(2,2,2,2)))
-ggsave('_figures/fig5def.png', width=6, height=2, units = 'in')
+de
+
+```
+
+```{r}
+ggsave(a, filename = '_figures/fig5a.png', width = 4.25, height = 2.25)
+ggsave(b, filename = '_figures/fig5b.png', width = 1.75, height = 1.75)
+ggsave(c, filename = '_figures/fig5c.png', width = 4.25, height = 1.5)
+ggsave(de, filename = '_figures/fig5de.png', width = 3, height = 1.75)
 
 ```
 
 The individual figure panels were annotated and combined in Inkscape.
 
-## Section 5.3: Duration
+## 4.4) Duration
+
+### Numerical results: Projected relative change in sequence duration 
+
+<br>
+Filter distribution statistics to focus on sequence duration
 
 ```{r}
 duration <- 
   cbind(
-    (stats_ssp245 / stats_ref) %>%
+    (stats_ssp245_eoc / stats_ref) %>%
       select(starts_with('duration')) %>%
       setNames(gsub('duration', 'ssp245', names(.))),
-    (stats_ssp585 / stats_ref) %>%
+    (stats_ssp585_eoc / stats_ref) %>%
       select(starts_with('duration')) %>%
       setNames(gsub('duration', 'ssp585', names(.)))) %>%
     cbind(raster.df(grid_ca) %>% select(-value)) %>%
@@ -1402,7 +1415,53 @@ duration <-
 
 ```
 
-### Statewide average relative duration change
+<br> 
+Relative duration change for HUC1804: 
+
+```{r}
+left_join(
+  stats_ssp245_eoc %>% 
+    select(starts_with('duration')) %>% 
+    cbind(huc = grid_hucrep[]) %>% 
+    filter(huc == 1804) %>% 
+    select(-huc) %>% 
+    pivot_longer(everything(), names_to = 'stat', values_to = 'ssp245'),
+  stats_ref %>% 
+    select(starts_with('duration')) %>% 
+    cbind(huc = grid_hucrep[]) %>% 
+    filter(huc == 1804) %>% 
+    select(-huc) %>% 
+    pivot_longer(everything(), names_to = 'stat', values_to = 'hist'), 
+  by = 'stat') %>% 
+  mutate(
+    stat = gsub('duration.', '', stat),
+    stat_name = case_when(
+      stat == 'med' ~ 'Median',
+      stat == 'q95' ~ '95th Percentile') %>% 
+      factor %>% factor(levels = levels(.)[3:1])) %>% 
+  mutate(fact = ssp245/hist, pct = fact-1) %>% 
+  select(stat_name, hist, ssp245, fact, pct) %>% 
+  gt %>% 
+  tab_header(
+    'Relative Change Calculation', 
+    subtitle = 'Sequence Duration (days)') %>% 
+  fmt_number(c(hist,ssp245), decimals = 0) %>% 
+  fmt_number(fact, decimals = 2) %>% 
+  fmt_percent(pct, decimals = 0) %>% 
+  cols_label(
+    stat_name = 'Statistic', 
+    hist = 'Historic',
+    ssp245 = 'SSP2-4.5', 
+    fact = 'Change Factor',
+    pct = 'Percent Change') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+```
+
+<br> 
+Statewide average relative duration change: 
 
 ```{r}
 duration %>% 
@@ -1422,7 +1481,6 @@ duration %>%
   cols_label(
     sim_name = 'Emission Scenario',
     mean.med = 'Mean', sd.med = 'Std.Dev.',
-    mean.iqr = 'Mean', sd.iqr = 'Std.Dev',
     mean.q95 = 'Mean', sd.q95 = 'Std.Dev.') %>% 
   tab_options(
     heading.background.color = '#d9d9d9', 
@@ -1433,19 +1491,29 @@ duration %>%
 ### FIG 6: Sequence duration change
 
 ```{r}
-# stats <- stats %>% mutate(dur = duration/7)
-g1 <- ggplot(stats) + 
+a <- ggplot(stats) + 
+  geom_ribbon(
+    aes(x = duration, group = source, ymin = source_name, ymax = source_name, fill = source),
+    color = NA, alpha = 0) + 
   stat_boxplot_custom(
     aes(x = duration, y = source_name, group = paste(source,ens), fill = source),
     qs = c(.05, .25, .5, .75, .95),
     outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.35,
     show.legend = FALSE) + 
-  scale_fill_manual(values = scico(7, palette = 'roma')[5:7]) +
+  scale_fill_manual(
+    'Climate Scenario', 
+    labels = c('Historic', 'SSP 2-4.5', 'SSP 5-8.5'), 
+    values = scico(7, palette = 'roma')[5:7], 
+    guide = guide_legend(
+      override.aes = list(
+        color = scico(7, palette = 'roma')[5:7], size = 0.25, alpha = 0.5))) +
   scale_x_continuous('Duration (days)', breaks = 30*(0:10)) +
   theme(
     text = element_text(family = 'Segoe UI', size = 8),
     panel.grid.major.x = element_line(size = 0.25),
-    axis.title.y = element_blank()) + 
+    axis.title.y = element_blank(),
+    legend.position = 'top',
+    legend.margin = margin(1,1,1,1)) + 
   ggtitle('Sequence Duration') + 
   geom_segment(
     x = stats %>% filter(source == 'hist') %>% pull(duration) %>% median,
@@ -1461,31 +1529,27 @@ g1 <- ggplot(stats) +
     x = stats %>% filter(source == 'ssp585') %>% pull(duration) %>% median,
     xend = stats %>% filter(source == 'ssp585') %>% pull(duration) %>% median,
     y = 0.6, yend = 1.4,
-    color = scico(11, palette = 'roma')[11]) +
-  geom_text(
-    aes(x = 152, y = 3.25, label = '(a)'),
-    size = 10/.pt, family = 'Segoe UI', fontface = 'bold') +
-  coord_cartesian(xlim = c(NA,150))
+    color = scico(11, palette = 'roma')[11])
+a
 
 ```
 
 ```{r}
-g2 <- duration %>% 
+bc <- duration %>% 
   mutate(
     id = 1:nrow(.),
     tag = ifelse(id %in% 1:3, paste0('(', letters[2:4], ')'), NA),
     sim_name = factor(sim_name, levels = rev(levels(sim_name)))) %>% 
   select(-id) %>% 
+  filter(stat != 'iqr') %>% 
   ggplot() +
   geom_vline(xintercept = 0, color = 'grey50', size = 0.35) +
   geom_density(
     aes(x = value-1, group = sim_name, fill = sim_name, color = sim_name),
     alpha = 0.35, size = 0.35) +
-  geom_text(
-    aes(x = 1.15, y = 13.5, label = tag),
-    size = 10/.pt, family = 'Segoe UI', fontface = 'bold') + 
   scale_color_manual('Climate\nScenario', values = scico(7, palette = 'roma')[6:7]) + 
   scale_fill_manual('Climate\nScenario', values = scico(7, palette = 'roma')[6:7]) + 
+  guides(color = guide_none(), fill = guide_none()) + 
   facet_wrap(~stat_name, nrow = 1) + 
   scale_x_continuous(
     'Percent Change Relative to 1981-2010', labels = percent) +
@@ -1500,121 +1564,100 @@ g2 <- duration %>%
     strip.background = element_rect(fill = 'grey95', color = NA),
     strip.text = element_text(margin = margin(2,2,2,2)), 
     plot.margin = margin(5,5,5,5))
+bc
 
 ```
 
-```{r fig.height=4}
-plot_grid(g1, g2, align = 'v', axis = 'l', nrow = 2)
-ggsave('_figures/fig6_duration.png', width=6, height=4, units = 'in')
+```{r}
+ggsave(a, filename = '_figures/fig6a.png', width = 4.25, height = 2.25)
+ggsave(bc, filename = '_figures/fig6bc.png', width = 4.18, height = 1.75)
 
 ```
 
-### Super-sequences
+The individual figure panels were annotated and combined in Inkscape.
+
+### Numerical results: Super-sequences
+
+<br>
+Create dataframes
 
 ```{r}
 extremes_ref <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_hist[[i]])) NA else {
+    if (is.null(df_hist[[i]])) rep(NA,5) else {
       temp <- df_hist[[i]] %>% 
+        filter(seq) %>% 
         filter(wateryear(date) %in% 1981:2010) %>% 
-        filter(seq) %>% 
         group_by(ens,seq.count) %>% 
-        summarize(duration = seq.duration[1], .groups = 'drop') %>% 
-        filter(duration > 60)
-      if (nrow(temp) == 0) 0 else { 
-        temp %>% 
-          summarize(n = nrow(.)/length(unique(ens))/30) %>% 
-          pull(n)
-      }
+        summarize(duration = seq.duration[1], .groups = 'drop')
+      temp %>% 
+        group_by(ens) %>% 
+        summarize(n = sum(duration>60)/30) %>% 
+        right_join(data.frame(ens = unique(df_hist[[i]]$ens))) %>%
+        mutate(n = setNA(n,0)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% 
+        pull(n)
     }
-  }
+  } %>% apply(1, Max)
 if (progress) cat('\n')
 
-extremes_ssp245 <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+extremes_ssp245_eoc <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp245[[i]])) NA else {
+    if (is.null(df_ssp245[[i]])) rep(NA,5) else {
       temp <- df_ssp245[[i]] %>% 
         filter(seq) %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         group_by(ens,seq.count) %>% 
-        summarize(duration = seq.duration[1], .groups = 'drop') %>% 
-        filter(duration > 60)
-      if (nrow(temp) == 0) 0 else { 
-        temp %>% 
-          summarize(n = nrow(.)/length(unique(ens))/diff(range(year(ts_decades)))) %>% 
-          pull(n)
-      }
+        summarize(duration = seq.duration[1], .groups = 'drop')
+      temp %>% 
+        group_by(ens) %>% 
+        summarize(n = sum(duration>60)/30) %>% 
+        right_join(data.frame(ens = unique(df_ssp245[[i]]$ens))) %>%
+        mutate(n = setNA(n,0)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% 
+        pull(n)
     }
-  }
+  } %>% apply(1, Max)
 if (progress) cat('\n')
 
-extremes_ssp585 <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
+extremes_ssp585_eoc <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp585[[i]])) NA else {
+    if (is.null(df_ssp585[[i]])) rep(NA,5) else {
       temp <- df_ssp585[[i]] %>% 
         filter(seq) %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         group_by(ens,seq.count) %>% 
-        summarize(duration = seq.duration[1], .groups = 'drop') %>% 
-        filter(duration > 60)
-      if (nrow(temp) == 0) 0 else { 
-        temp %>% 
-          summarize(n = nrow(.)/length(unique(ens))/diff(range(year(ts_decades)))) %>% 
-          pull(n)
-      }
+        summarize(duration = seq.duration[1], .groups = 'drop')
+      temp %>% 
+        group_by(ens) %>% 
+        summarize(n = sum(duration>60)/30) %>% 
+        right_join(data.frame(ens = unique(df_ssp585[[i]]$ens))) %>%
+        mutate(n = setNA(n,0)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% 
+        pull(n)
     }
-  }
-if (progress) cat('\n')
-
-thirty_ssp245 <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp245[[i]])) NA else {
-      temp <- df_ssp245[[i]] %>% 
-        filter(seq) %>% 
-        filter(year(date) %in% 2021:2050) %>% 
-        group_by(ens,seq.count) %>% 
-        summarize(duration = seq.duration[1], .groups = 'drop') %>% 
-        filter(duration > 60)
-      if (nrow(temp) == 0) 0 else { 
-        temp %>% 
-          summarize(n = nrow(.)/length(unique(ens))/30) %>% 
-          pull(n)
-      }
-    }
-  }
-if (progress) cat('\n')
-
-thirty_ssp585 <- 
-  foreach (i = 1:ncell(grid_ca), .combine = 'c') %do% {
-    if (progress) setTxtProgressBar(pb,i)
-    if (is.null(df_ssp585[[i]])) NA else {
-      temp <- df_ssp585[[i]] %>% 
-        filter(seq) %>% 
-        filter(year(date) %in% 2021:2050) %>% 
-        group_by(ens,seq.count) %>% 
-        summarize(duration = seq.duration[1], .groups = 'drop') %>% 
-        filter(duration > 60)
-      if (nrow(temp) == 0) 0 else { 
-        temp %>% 
-          summarize(n = nrow(.)/length(unique(ens))/30) %>% 
-          pull(n)
-      }
-    }
-  }
+  } %>% apply(1, Max)
 if (progress) cat('\n')
 
 ```
+
+<br> 
+Historical vs. projected future spatial coverage of super-sequences: 
 
 ```{r}
 rbind(
   c('Historic', 'single', Sum(extremes_ref>0) / sum(!is.na(extremes_ref))),
-  c('SSP2-4.5', 'single', Sum(thirty_ssp245>0) / sum(!is.na(thirty_ssp245))),
-  c('SSP5-8.5', 'single', Sum(thirty_ssp585>0) / sum(!is.na(thirty_ssp245))),
+  c('SSP2-4.5', 'single', Sum(extremes_ssp245_eoc>0) / sum(!is.na(extremes_ssp245_eoc))),
+  c('SSP5-8.5', 'single', Sum(extremes_ssp585_eoc>0) / sum(!is.na(extremes_ssp585_eoc))),
   c('Historic', 'multiple', Sum(extremes_ref>(1/30)) / sum(!is.na(extremes_ref))),
-  c('SSP2-4.5', 'multiple', Sum(thirty_ssp245>(1/30)) / sum(!is.na(thirty_ssp245))),
-  c('SSP5-8.5', 'multiple', Sum(thirty_ssp585>(1/30)) / sum(!is.na(thirty_ssp245)))) %>% 
+  c('SSP2-4.5', 'multiple', Sum(extremes_ssp245_eoc>(1/30)) / sum(!is.na(extremes_ssp245_eoc))),
+  c('SSP5-8.5', 'multiple', Sum(extremes_ssp585_eoc>(1/30)) / sum(!is.na(extremes_ssp585_eoc)))) %>% 
   as.data.frame %>% setNames(c('source', 'super', 'pct')) %>% 
   mutate(pct = toNumber(pct)) %>% 
   pivot_wider(names_from = super, values_from = pct) %>% 
@@ -1624,15 +1667,12 @@ rbind(
     subtitle = 'Percent of Grid Cells Affected over 30 Years (1981-2010 or 2021-2050)') %>% 
   fmt_percent(c(single, multiple), decimals = 1) %>% 
   cols_label(
-    source = 'Scenario',
+    source = 'Emission Scenario',
     single = 'Cells with >0 Super-Sequences',
     multiple = 'Cells with Multiple Super-Sequences') %>% 
   tab_options(
     heading.background.color = '#d9d9d9', 
     column_labels.background.color = '#f2f2f2')
-
-
-
 
 ```
 
@@ -1645,7 +1685,7 @@ bucket_ref <-
     if (!is.null(df_hist[[i]])) {
       temp <- df_hist[[i]] %>% 
         filter(seq) %>% 
-        filter(year(date) %in% 1981:2010) %>% 
+        filter(wateryear(date) %in% 1981:2010) %>% 
         group_by(ens,seq.count) %>% 
         summarize(duration = seq.duration[1], .groups = 'drop') %>% 
         mutate(duration_cut = cut(duration, breaks = c(0,14,30,60,200)))
@@ -1654,30 +1694,32 @@ bucket_ref <-
     } else rep(NA,6)
   }
 if (progress) cat('\n')
-bucket_ssp245 <- 
+bucket_ssp245_eoc <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
     if (!is.null(df_ssp245[[i]])) {
       temp <- df_ssp245[[i]] %>% 
         filter(seq) %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         group_by(ens,seq.count) %>% 
         summarize(duration = seq.duration[1], .groups = 'drop') %>% 
         mutate(duration_cut = cut(duration, breaks = c(0,14,30,60,200)))
-      (summary(temp$duration_cut) / length(unique(temp$ens)) / diff(range(year(ts_decades)))) %>% 
+      (summary(temp$duration_cut) / length(unique(temp$ens)) / 30) %>% 
         as.matrix %>% t %>% as.data.frame
     } else rep(NA,6)
   }
 if (progress) cat('\n')
-bucket_ssp585 <- 
+bucket_ssp585_eoc <- 
   foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
     if (progress) setTxtProgressBar(pb,i)
     if (!is.null(df_ssp585[[i]])) {
       temp <- df_ssp585[[i]] %>% 
         filter(seq) %>% 
+        filter(wateryear(date) %in% 2061:2090) %>% 
         group_by(ens,seq.count) %>% 
         summarize(duration = seq.duration[1], .groups = 'drop') %>% 
         mutate(duration_cut = cut(duration, breaks = c(0,14,30,60,200)))
-      (summary(temp$duration_cut) / length(unique(temp$ens)) / diff(range(year(ts_decades)))) %>% 
+      (summary(temp$duration_cut) / length(unique(temp$ens)) / 30) %>% 
         as.matrix %>% t %>% as.data.frame
     } else rep(NA,6)
   }
@@ -1689,27 +1731,26 @@ bucket <-
       cbind(raster.df(grid_huc4) %>% transmute(huc4 = value)) %>% 
       slice(index_ca) %>% 
       mutate(id = index_ca, source = 'hist'),
-    bucket_ssp245 %>% 
+    bucket_ssp245_eoc %>% 
       cbind(raster.df(grid_huc4) %>% transmute(huc4 = value)) %>% 
       slice(index_ca) %>% 
       mutate(id = index_ca, source = 'ssp245'),
-    bucket_ssp585 %>% 
+    bucket_ssp585_eoc %>% 
       cbind(raster.df(grid_huc4) %>% transmute(huc4 = value)) %>% 
       slice(index_ca) %>% 
       mutate(id = index_ca, source = 'ssp585')) %>% 
   pivot_longer(cols = c(-id,-source,-huc4), names_to = 'bucket', values_to = 'freq') %>% 
   mutate(
     bucket_label = case_when(
-      # bucket == '(0,6]' ~ '<7 Days',
       bucket == '(0,14]' ~ 'Duration \u2264 14 Days',
       bucket == '(14,30]' ~ 'Duration = 15-30 Days',
       bucket == '(30,60]' ~ 'Duration = 31-60 Days',
-      # bucket == '(60,90]' ~ '61-90 Days',
       bucket == '(60,200]' ~ 'Duration > 60 Days') %>% 
       factor(levels = c(
         'Duration \u2264 14 Days', 'Duration = 15-30 Days',
         'Duration = 31-60 Days', 'Duration > 60 Days'))) %>% 
   pivot_wider(names_from = source, values_from = freq)
+
 
 ```
 
@@ -1720,24 +1761,28 @@ temp <- bucket %>%
   apply(2, Max)
 ratio <- (temp/temp[1])[-1]
 
+uppers <- bucket %>% 
+  group_by(bucket) %>% 
+  summarize(across(c('hist', 'ssp245', 'ssp585'), Max)) %>% 
+  select(-bucket)
+
 g.high <- list()
 for (i in 1:4) {
-  upper <- bucket %>% 
-    filter(bucket_label == levels(bucket_label)[i]) %>% 
-    pull(hist) %>% Max
+  temp <- 
+    ggplot(bucket %>% filter(bucket_label == levels(bucket_label)[i])) + 
+    geom_point(aes(x = hist, y = ssp245), size = 0.75)
+  dx <- ggplot_build(temp)$layout$panel_params[[1]]$x$breaks %>% diff %>% .[1]
   g.high[[i]] <- 
     ggplot(bucket %>% filter(bucket_label == levels(bucket_label)[i])) + 
     geom_point(aes(x = hist, y = ssp245), size = 0.75) + 
     facet_wrap(~bucket_label) + 
-    geom_text(
-      data = data.frame(tag = paste0('(', letters[2*i-1], ')'), upper = upper),
-      aes(x = 0.2*upper, y = 1.55*upper, label = tag), 
-      family = 'Segoe UI', size = 10/.pt, fontface = 'bold') + 
-    # scale_color_manual(values = colors.huc, na.value = NA, guide = guide_none()) + 
     scale_x_origin('Historic (1921-2010) Annual Frequency') + 
-    scale_y_origin('SSP2-4.5\nAnnual Frequency') + 
+    scale_y_origin(
+      'SSP2-4.5 Annual\nFrequency (WY 2061-2090)', 
+      breaks = seq(0, uppers$ssp245[i]+2*dx, 2*dx)) + 
     geom_parity() + 
-    coord_cartesian(clip = 'off', xlim = c(0,upper), ylim = c(0,ratio[1]*1.25*upper)) + 
+    coord_cartesian(
+      clip = 'off', xlim = c(0, uppers$hist[i]), ylim = c(0, ratio[1]*1.1*uppers$hist[i])) + 
     theme(
       text = element_text(family = 'Segoe UI', size = 8),
       panel.grid.major = element_line(size = 0.25),
@@ -1746,30 +1791,28 @@ for (i in 1:4) {
       strip.text = element_text(margin = margin(2,2,2,2)))
 }
 g.high[[1]] <- g.high[[1]] + theme(axis.title.y = element_text())
-# g.high[[3]] <- g.high[[3]] + theme(axis.title.x = element_text())
 
 g.low <- list()
 for (i in 1:4) {
-  upper <- bucket %>% 
-    filter(bucket_label == levels(bucket_label)[i]) %>% 
-    pull(hist) %>% Max
+  temp <- 
+    ggplot(bucket %>% filter(bucket_label == levels(bucket_label)[i])) + 
+    geom_point(aes(x = hist, y = ssp585), size = 0.75)
+  dx <- ggplot_build(temp)$layout$panel_params[[1]]$x$breaks %>% diff %>% .[1]
   g.low[[i]] <- 
     ggplot(bucket %>% filter(bucket_label == levels(bucket_label)[i])) + 
     geom_point(aes(x = hist, y = ssp585), size = 0.75) + 
     facet_wrap(~bucket_label) + 
-    geom_text(
-      data = data.frame(tag = paste0('(', letters[2*i], ')'), upper = upper),
-      aes(x = 0.2*upper, y = 2.5*upper, label = tag), 
-      family = 'Segoe UI', size = 10/.pt, fontface = 'bold') + 
-    # scale_color_manual(values = colors.huc, na.value = NA, guide = guide_none()) + 
     scale_x_origin('Historic (1921-2010)\nAnnual Frequency') + 
-    scale_y_origin('SSP5-8.5\nAnnual Frequency') + 
+    scale_y_origin(
+      'SSP5-8.5 Annual\nFrequency (WY 2061-2090)', 
+      breaks = seq(0, uppers$ssp585[i]+2*dx, 2*dx)) + 
     geom_parity() + 
-    coord_cartesian(clip = 'on', xlim = c(0,upper), ylim = c(0,ratio[2]*upper)) + 
+    coord_cartesian(
+      clip = 'off', xlim = c(0, uppers$hist[i]), ylim = c(0, ratio[2]*uppers$hist[i])) + 
     theme(
       text = element_text(family = 'Segoe UI', size = 8),
       panel.grid.major = element_line(size = 0.25),
-      axis.title.y = element_blank(),
+      axis.title = element_blank(),
       strip.background = element_rect(color = NA, fill = 'grey95'),
       strip.text = element_text(margin = margin(2,2,2,2)))
 }
@@ -1780,13 +1823,112 @@ g.high[[1]] + g.high[[2]] + g.high[[3]] + g.high[[4]] + #g.high[[5]] +
   g.low[[1]] + g.low[[2]] + g.low[[3]] + g.low[[4]] + #g.low[[5]] +  
   plot_layout(
     design = layout, 
-    widths = rep(1,5), heights = c(3,5)) #+ 
-  # plot_annotation(
-    # tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') &
-  # theme(plot.tag = element_text(face = 'bold'))
+    widths = rep(1,5), heights = c(3,5)) + 
+  plot_annotation(
+    caption = 'Historic Annual Frequency (WY 1981-2010)',
+    tag_levels = list(letters[c(1,3,5,7,2,4,6,8)]), tag_prefix = '(', tag_suffix = ')', ) &
+  theme(
+    plot.tag = element_text(
+      family = 'Segoe UI', face = 'bold', size = 10, margin = margin(-5,-5,-5,-5)),
+    plot.caption = element_text(size = 8, hjust = 0.5, margin = margin(0,0,0,0)))
 ggsave('_figures/fig7_returnperiod.png', width = 6, height = 3.5, units = 'in')
 
 ```
 
+# 5) Discussion
 
+<br>
+Create dataframes
+
+```{r}
+exceed_ref <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_hist[[i]])) {
+      df_hist[[i]] %>% 
+        mutate(wy = wateryear(date)) %>% 
+        filter(wy %in% 1981:2010) %>% 
+        filter(seq) %>% 
+        group_by(ens, wy, seq.count) %>% 
+        summarize(duration = seq.duration[1], .groups = 'drop_last') %>%
+        summarize(exceed60 = (sum(duration>60)/length(duration)) > 0, .) %>% 
+        right_join(expand.grid(ens = unique(df_hist[[i]]$ens), wy = 1981:2010), by = c('ens', 'wy')) %>%
+        mutate(exceed60 = setNA(exceed60, FALSE)) %>% 
+        summarize(across(starts_with('exceed'), mean)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% pull(exceed60)
+    } else rep(NA,5)
+  }
+if (progress) cat('\n')
+
+exceed_ssp245_eoc <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_ssp245[[i]])) {
+      df_ssp245[[i]] %>% 
+        mutate(wy = wateryear(date)) %>% 
+        filter(wy %in% 2061:2090) %>% 
+        filter(seq) %>% 
+        group_by(ens, wy, seq.count) %>% 
+        summarize(duration = seq.duration[1], .groups = 'drop_last') %>%
+        summarize(exceed60 = (sum(duration>60)/length(duration)) > 0) %>% 
+        right_join(expand.grid(ens = unique(df_ssp245[[i]]$ens), wy = 2061:2090), by = c('ens', 'wy')) %>%
+        mutate(exceed60 = setNA(exceed60, FALSE)) %>% 
+        summarize(across(starts_with('exceed'), mean)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% pull(exceed60)
+    } else rep(NA,4)
+  }
+if (progress) cat('\n')
+
+exceed_ssp585_eoc <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (!is.null(df_ssp585[[i]])) {
+      df_ssp585[[i]] %>% 
+        mutate(wy = wateryear(date)) %>% 
+        filter(wy %in% 2061:2090) %>% 
+        filter(seq) %>% 
+        group_by(ens, wy, seq.count) %>% 
+        summarize(duration = seq.duration[1], .groups = 'drop_last') %>%
+        summarize(exceed60 = (sum(duration>60)/length(duration)) > 0) %>% 
+        right_join(expand.grid(ens = unique(df_ssp585[[i]]$ens), wy = 2061:2090), by = c('ens', 'wy')) %>%
+        mutate(exceed60 = setNA(exceed60, FALSE)) %>% 
+        summarize(across(starts_with('exceed'), mean)) %>% 
+        right_join(data.frame(ens = 1:5), by = 'ens') %>% 
+        arrange(ens) %>% pull(exceed60)
+    } else rep(NA,4)
+  }
+if (progress) cat('\n')
+
+```
+
+Percentage of years with super-sequences:
+
+```{r}
+data.frame(
+  `Historic` = exceed_ref %>% apply(1, Mean),
+  `SSP2-4.5` = exceed_ssp245_eoc %>% apply(1, Mean),
+  `SSP5-8.5` = exceed_ssp585_eoc %>% apply(1, Mean)) %>%
+  slice(index_ca) %>% 
+  pivot_longer(everything()) %>%
+  group_by(name) %>%
+  # as_tibble() %>% 
+  summarize(across(value, .fns = list(mean = mean, sd = sd, rp = function(x) 1/mean(x)))) %>% 
+  # pivot_longer(-name, names_to = 'stat')
+  gt %>% 
+  tab_header('Percent of Years with Super-Sequences') %>% 
+  fmt_markdown(name) %>% 
+  fmt_percent(c(value_mean, value_sd), decimals = 1) %>% 
+  fmt_number(value_rp, decimals = 1) %>% 
+  cols_label(
+    name = 'Emission Scenario',
+    value_mean = 'Mean (%)',
+    value_sd = 'Std. Dev. (%)',
+    value_rp = 'Return Period (yrs)') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+```
 
