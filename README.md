@@ -1,6 +1,6 @@
-# Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates
+# Supplemental Code Release
 
-## Supplemental Code Release
+## Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates
 
 
 <a href="https://zenodo.org/badge/latestdoi/542767925"><img src="https://zenodo.org/badge/542767925.svg" alt="DOI"></a>
