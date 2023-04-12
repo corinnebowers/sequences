@@ -140,7 +140,7 @@ save(data_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ```
 
-```{r}
+```{r eval = FALSE}
 start <- Sys.time()
 pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 cl <- makeCluster(cores)
@@ -214,11 +214,11 @@ Sys.time() - start
 ## checkpoint
 
 ```{r}
-## save out
-save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
+# ## save out
+# save(df_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
 
-# ## load from file
-# load('_scripts/_checkpoints/df_3hr_1209.Rdata')
+## load from file
+load('_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ```
 
@@ -309,8 +309,8 @@ df_24hr <-
         ## load impacts data
         load('_data/impacts/disasters_0922.Rdata')    # FEMA disaster declarations
         load('_data/impacts/pa_0922.Rdata')           # FEMA public assistance
-        load('_data/impacts/ncei_0922.Rdata')         # NCEI storm events database
-        load('_data/impacts/NFIP_0922.Rdata')         # NFIP claims & policies
+        load('_data/impacts/ncei_0222.Rdata')         # NCEI storm events database
+        load('_data/impacts/NFIP_0210.Rdata')         # NFIP claims & policies
         load('_data/impacts/poprasters_0922.Rdata')   # gridded population
         load('_data/impacts/wwa_0922.Rdata')          # NWS watches, warnings, & advisories
   
@@ -328,10 +328,11 @@ Sys.time() - start
 
 ```{r}
 ## save out
-save(df_24hr, file = '_scripts/_checkpoints/data_24hr_1209.Rdata') 
+save(df_24hr, file = '_scripts/_checkpoints/df_24hr_0209.Rdata') 
  
 # ## load from file
-# load('_scripts/_checkpoints/data_24hr_1209.Rdata')
+# load('_scripts/_checkpoints/df_24hr_0209.Rdata')
 
 ```
+
 

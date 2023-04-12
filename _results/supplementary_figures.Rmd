@@ -1,6 +1,6 @@
 ---
-title: "supplementary_figures"
-date: "2023-01-13"
+title: "Supplementary Figures"
+date: "2023-01-24"
 author: Corinne Bowers
 output:
   html_document:
@@ -145,7 +145,7 @@ ggsave('_figures/s1_biascorr.png', width=6, height=3.75)
 <br>
 Generate LHS samples 
 
-```{r}
+```{r eval = FALSE}
 ## define big table of samples
 samples.norm <- improvedLHS(n = 100, k = 3)
 samples.dist <- 
@@ -162,7 +162,7 @@ Generate output statistics for every LHS parameter combination
 
 (this takes a while $\to$ load from file)
 
-```{r}
+```{r eval = FALSE}
 ## define progress bar
 if (progress) pb <- txtProgressBar(min = 0, max = 10*nrow(samples.dist), style = 3)
 
@@ -307,7 +307,7 @@ save(samples.dist, sens_hist, sens_ssp245, sens_ssp585, file = '_results/sensiti
 
 ```{r}
 ## load checkpoint from file
-# load('_results/sensitivity_checkpoint.Rdata')
+load('_results/sensitivity_checkpoint.Rdata')
 
 ```
 
@@ -435,7 +435,7 @@ Calculate bootstrapped likelihood of L1 distance
   Frequency:
 
 ```{r}
-pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
+if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
 clust <- parallel::makeCluster(cores)
 registerDoSNOW(clust)
 rsa_freq <- 
@@ -443,7 +443,7 @@ rsa_freq <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {
@@ -466,7 +466,7 @@ rsa_freq_rel <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {
@@ -489,7 +489,7 @@ stopCluster(clust)
   Intensity:
     
 ```{r}
-pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
+if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
 clust <- parallel::makeCluster(cores)
 registerDoSNOW(clust)
 rsa_maxivt <- 
@@ -497,7 +497,7 @@ rsa_maxivt <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {
@@ -520,7 +520,7 @@ rsa_maxivt_rel <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {
@@ -543,7 +543,7 @@ stopCluster(clust)
   Duration:
     
 ```{r}
-pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
+if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
 clust <- parallel::makeCluster(cores)
 registerDoSNOW(clust)
 rsa_duration <- 
@@ -551,7 +551,7 @@ rsa_duration <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {
@@ -574,7 +574,7 @@ rsa_duration_rel <-
   foreach (cl = 1:k, .combine = 'rbind', .inorder = FALSE) %:%
   foreach (
     var = c('startend', 'window', 'magcutoff'), 
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .export = 'L1_boot',
     .packages = c('tidyverse', 'pracma'),
     .combine = 'rbind', .inorder = FALSE) %dopar% {

@@ -2,7 +2,7 @@
 _figures/
 _data/_old/
 _data/WBD/
-_data/*/readme.Rmd
+**readme.Rmd
 **.Rdata
 
 ## _data/GFDL

@@ -124,10 +124,12 @@ attach_impacts <- function(daily, i) {
     left_join(
       ncei_grid %>% filter(cell == i) %>% select(-cell),
       by = 'date') %>%
-    mutate(ncei_damage = setNA(ncei_damage,0)) %>%
+    mutate(
+      ncei_damage = case_when(year(date) >= 1996 ~ setNA(ncei_damage,0)),
+      ncei_event = case_when(year(date) >= 1996 ~ setNA(ncei_event, FALSE))) %>% 
     ## claims
     left_join(
-      claims %>% filter(cell == i) %>% select(-cell),
+      claims_grid %>% filter(cell == i) %>% select(-cell),
       by = 'date') %>%
     mutate(
       claims_num = setNA(claims_num,0),
@@ -137,7 +139,7 @@ attach_impacts <- function(daily, i) {
     ## policies
     mutate(wy = wateryear(date)) %>%
     left_join(
-      policies %>% filter(cell == i) %>% select(-cell),
+      policies_grid %>% filter(cell == i) %>% select(-cell),
       by = c('wy' = 'coverage_wy')) %>%
     mutate(
       policies_num =
