@@ -10,12 +10,12 @@ The markdown files are also available as interactive HTML documents through the 
 
 ## Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates
 
-* [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the first paper, "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates".
-* [supplementary_figures.html](https://corinnebowers.github.io/supplementary_figures.html) presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information of the first paper.
+* [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper.
+* [supplementary_figures.html](https://corinnebowers.github.io/supplementary_figures.html) presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
 
 ## Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California
 
-* [reproduce_figures_impacts.html](https://corinnebowers.github.io/reproduce_figures_impacts.html) replicates all figures and numerical results from the main body of the second paper, "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California".
+* [reproduce_figures_impacts.html](https://corinnebowers.github.io/reproduce_figures_impacts.html) replicates all figures and numerical results from the main body of the paper.
 
 If you have any further questions please contact Corinne Bowers. 
 
