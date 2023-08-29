@@ -1,0 +1,293 @@
+---
+title: "create_df"
+output: html_document
+date: "2022-09-27"
+author: Corinne Bowers
+theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This script creates three dataframes for one of the preprocessed ARDTs specified by the user. The ARDT options are:
+
+* Brands et al. (2017), v3        # https://doi.org/10.1007/s00382-016-3095-6
+* CASCADE - IVT                   # N/A
+* CONNECT500                      # https://doi.org/10.1175/JHM-D-14-0101.1
+* Gershunov et al. (2017)         # https://doi.org/10.1002/2017GL074175
+* Goldenson et al. (2018), v1     # https://doi.org/10.1175/JCLI-D-18-0268.1
+* Guan & Waliser (2015)           # https://doi.org/10.1002/2015JD024257
+* LBNL ML-TDA                     # https://doi.org/10.5194/gmd-12-613-2019
+* Lora et al. (2017), N. Pacific  # https://doi.org/10.1002/2016GL071541
+* Mattingly et al. (2018), v2     # https://doi.org/10.1029/2018JD028714
+* Mundhenk et al. (2016), v2      # https://doi.org/10.1175/JCLI-D-15-0655.1
+* Payne & Magnusdottir (2016)     # https://doi.org/10.1002/2016JD025549
+* Rutz et al. (2014)              # https://doi.org/10.1175/MWR-D-13-00168.1
+* SCAFET, v1                      # N/A
+* Walton                          # N/A
+
+The dataframes are: a list of three-hour datasets, a list of twenty-four-hour datasets, and an overall event catalog. 
+
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+# rm(list=ls())
+
+```
+
+# setup 
+
+```{r}
+## load packages & functions
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+# cores <- parallel::detectCores()-2
+
+mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
+
+```
+
+## choose ARDT
+
+```{r}
+ardtnames <- c(
+  'brand','cascade','connect','gershunov','goldenson','guanwaliser','lbnl',
+  'lora','mattingly','mundhenk','paynemagnusdottir','rutz','scafet','walton')
+ardtname <- 'rutz'
+
+```
+
+## load data
+
+### metadata
+
+```{r}
+## get hourly/daily timeseries
+ts_merra <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- ts_merra %>% as.Date %>% unique
+
+ts_artmip <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2016-12-31 21:00:00'), by = '3 hours')
+
+```
+
+### existing IVT dataframes
+
+```{r}
+load('_scripts/_checkpoints/df_3hr_1209.Rdata')
+load('_scripts/_checkpoints/df_24hr_0209.Rdata')
+
+```
+
+### ARs
+
+```{r}
+load('_data/ARTMIP/Tier 1/ardt_rutz.Rdata')
+
+```
+
+### impacts
+
+```{r}
+load('_data/impacts/ncei_0222.Rdata')         # NCEI storm events database
+load('_data/impacts/NFIP_0210.Rdata')         # NFIP claims & policies
+
+```
+
+## define functions
+
+```{r}
+add_inter <- function(df) {
+  #' Creates the colum inter.duration measuring between-event interval, in days.
+  #' @param df dataframe with columns ts (datetime), ar (logical), and ivt (double)
+  #' @return dataframe with new column inter.duration (double)
+  temp <- df %>% mutate(inter = !ar, inter.count = add_counter(inter))
+  temp <- create_catalog(temp, 'inter', cat = FALSE, interval = 3/24) %>% 
+    select(count, duration) %>% 
+    setNames(paste('inter', names(.), sep = '.')) %>% 
+    left_join(temp, ., by = 'inter.count') %>% 
+    mutate(
+      inter.duration = setNA(inter.duration,0),
+      prev.inter = c(NA, inter.duration[-nrow(.)]),
+      next.inter = c(inter.duration[-1], NA)) %>% 
+    select(c(names(temp), ends_with('inter'))) %>% select(-inter, -inter.count)
+  return(temp)
+}
+
+add_category <- function(df) {
+  #' Adds the column ar.cat to a 3-hour timeseries dataframe.
+  #' @param df dataframe with columns count (double), ivt (double), and duration (double)
+  #' @return dataframe with new column ar.cat
+  temp <- df %>% 
+    filter(!is.na(count)) %>% 
+    group_by(count) %>% 
+    summarize(duration = max(duration), maxivt = max(ivt)) %>% 
+    mutate(ar.cat = map2_dbl(.x = maxivt, .y = duration, .f = ~assign_AR_cat(.x,.y)))
+  temp <- df %>% left_join(temp %>% select(count, ar.cat), by = 'count')
+}
+
+mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
+
+```
+
+# create 3-hr dataframes 
+
+```{r}
+## convert from list by year to list by location
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+artmip_3hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
+    .export = c('assign_AR_cat', 'add_counter', 'add_category')) %dopar% {
+      if (i %in% index_ca) {
+        index <- rowColFromCell(grid_ca, i)
+        data <-
+          data.frame(
+            ts = ts_artmip,
+            count = ardt[1:37] %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.))
+        data %>% 
+          transmute(ts, ar = !is.na(count), count, duration = NA) %>%
+          left_join(df_3hr[[i]] %>% select(ts,ivt,seq,seq.count), by = 'ts') %>% 
+          calculate_duration(.) %>% add_category(.) %>% 
+          rename(ar.count = count) %>% 
+          mutate(
+            ar = case_when(ar.cat==0 ~ FALSE, TRUE ~ ar),
+            ar.cat = case_when(ar ~ ar.cat),
+            ar.count = case_when(ar ~ ar.count)) %>%   
+          add_inter(.)
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+# create 24-hr dataframes
+
+```{r}
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+artmip_24hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
+    .export = c('mode', 'setNA')) %dopar% {
+      if (i %in% index_ca) {
+        artmip_3hr[[i]] %>% 
+          group_by(date = as.Date(ts)) %>% 
+          summarize(
+            ar = mean(ar) >= 0.25,
+            ar.count = case_when(ar ~ mode(ar.count)),
+            seq = mean(seq) >= 0.25) %>% 
+            left_join(
+              ncei_grid %>% filter(cell == i) %>% select(-cell),
+              by = 'date') %>%
+            mutate(
+              ncei_damage = case_when(year(date) >= 1996 ~ setNA(ncei_damage,0)),
+              ncei_event = case_when(year(date) >= 1996 ~ setNA(ncei_event, FALSE))) %>% 
+            left_join(
+              claims_grid %>% filter(cell == i) %>% select(-cell),
+              by = 'date') %>%
+            mutate(
+              claims_num = setNA(claims_num,0),
+              claims_value = setNA(claims_value,0)) %>% 
+          select(-claims_coverage, -claims_dr)
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+# create event catalog 
+
+```{r}
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+artmip_3hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
+    .export = c('toNumber')) %dopar% {
+      if (i %in% index_ca) {
+        artmip_3hr[[i]] %>% 
+          filter(!is.na(ar.count)) %>% 
+          group_by(ar.count) %>% 
+          summarize(
+            start = ts[1], end = ts[length(ts)], 
+            maxivt = max(ivt), duration = max(duration), 
+            ar.cat = ar.cat[1],
+            prev.inter = prev.inter[1],
+            next.inter = next.inter[length(ar.count)]) %>% 
+          mutate(
+            prev.cat = c(NA, ar.cat[-nrow(.)]),
+            next.cat = c(ar.cat[-1], NA),
+            prev.inter = c(NA, prev.inter[-1]), 
+            next.inter = c(next.inter[-nrow(.)], NA)) %>% 
+          left_join(
+            artmip_24hr[[i]] %>% 
+              filter(!is.na(ar.count)) %>% 
+              group_by(ar.count = toNumber(ar.count)) %>% 
+              summarize(across(c(starts_with('ncei'), starts_with('claims')), Sum)),
+            by = 'ar.count') %>% 
+          mutate(id = i)
+      } else NULL
+    } %>% reduce(rbind)
+stopCluster(cl)
+Sys.time() - start
+
+```
+
+```{r}
+artmip_3hr[[i]] %>% 
+  filter(!is.na(ar.count)) %>% 
+  group_by(ar.count) %>% 
+  summarize(
+    start = ts[1], end = ts[length(ts)], 
+    maxivt = max(ivt), duration = max(duration), 
+    ar.cat = ar.cat[1],
+    prev.inter = prev.inter[1],
+    next.inter = next.inter[length(ar.count)]) %>% 
+  mutate(
+    prev.cat = c(NA, ar.cat[-nrow(.)]),
+    next.cat = c(ar.cat[-1], NA),
+    prev.inter = c(NA, prev.inter[-1]), 
+    next.inter = c(next.inter[-nrow(.)], NA)) %>% 
+  left_join(
+    artmip_24hr[[i]] %>% 
+      filter(!is.na(ar.count)) %>% 
+      group_by(ar.count = toNumber(ar.count)) %>% 
+      summarize(across(c(starts_with('ncei'), starts_with('claims')), Sum)),
+    by = 'ar.count')
+
+```
+
+# save out
+
+```{r}
+## save out
+save(
+  artmip_3hr, artmip_24hr, artmip_catalog,
+  file = paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
+
+# ## load from file
+# load(paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
+
+```
+
+

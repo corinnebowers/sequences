@@ -181,7 +181,7 @@ grid_county <- grid %>%
 #### watersheds ###################################################################################
 
 ## load HUC4 watersheds
-huc4 <- st_read('D:/2-sequences/_data/WBD/WBDHU4.shp', quiet = TRUE)
+huc4 <- st_read('D:/02-sequences/_data/WBD/WBDHU4.shp', quiet = TRUE)
 huc4 <- huc4 %>% 
   mutate(huc4 = toNumber(huc4)) %>% 
   arrange(huc4)

@@ -1,0 +1,854 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-08-17"
+---
+
+# setup
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
+# knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
+# knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+# rm(list=ls())
+
+```
+
+```{r}
+## load packages & functions
+source('_data/setup.R')
+source('_scripts/create_df_functions.R')
+
+## additional packages
+require(ncdf4)
+
+## define custom function to convert .nc array output to raster bricks
+array_to_raster <- function(x, lon_subset, lat_subset) {
+  x %>% 
+    aperm(c(2,1,3)) %>% 
+    brick(
+      xmn = min(lon_subset)-xres/2, xmx = max(lon_subset)+xres/2,
+      ymn = min(lat_subset)-yres/2, ymx = max(lat_subset)+yres/2,
+      crs = projection(wus)) %>%
+    raster::flip('y')
+}
+
+```
+
+# subset ncdf files to CA and save as rasters
+
+## ARConnect
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/ARConnect/MERRA2_native.ar_tag.ARCONNECT_v2.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_arconnect <- ymd_hms('1980-01-01 00:00:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>%
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>%
+#   ggplot() +
+#   geom_raster(aes(x = lon, y = lat, fill = value)) +
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>%
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+pb <- txtProgressBar(min = 1980, max = 2019, style = 3)
+ardt_arconnect <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/ARConnect/MERRA2_native.ar_tag.ARCONNECT_v2.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_arconnect, file = '_data/ARTMIP/arconnect.Rdata')
+
+```
+
+## ClimateNet 
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/ClimateNet/MERRA2_native.ar_tag.ClimateNet_DL_model.1hr.19810101-19811231.nc')
+
+# ncatt_get(nc, 'time')
+# t_climatenet <- ymd_hms('1980-01-01 00:30:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_climatenet <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/ClimateNet/MERRA2_native.ar_tag.ClimateNet_DL_model.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_climatenet, file = '_data/ARTMIP/climatenet.Rdata')
+
+```
+
+## Guan & Waliser
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/GuanWaliser/MERRA2_native.ar_tag.GuanWaliser_v2.1hr.19800101-20191231.nc')
+
+# ncatt_get(nc, 'time')
+# t_guanwaliser <- ymd_hms('1980-01-01 00:00:00') + hours(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), 365*24)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## load all years
+nc <- nc_open('_data/ARTMIP/GuanWaliser/MERRA2_native.ar_tag.GuanWaliser_v2.1hr.19800101-20191231.nc')
+ardt_guanwaliser <- 
+  ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+  array_to_raster(., lon_subset, lat_subset)
+nc_close(nc)
+save(ardt_guanwaliser, file = '_data/ARTMIP/guanwaliser.Rdata')
+
+```
+
+## IDL - N/A
+
+```{r eval = FALSE, include = FALSE}
+nc <- nc_open('_data/ARTMIP/IDL/MERRA2.ar_tag.IDL_v2b.1hr.19800101-19801231.nc')
+
+ncatt_get(nc, 'time')
+t_idl <- ymd_hms('1980-01-01 00:30:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+  mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+  ggplot() + 
+  geom_raster(aes(x = lon, y = lat, fill = value)) + 
+  geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = california, fill = NA)
+
+```
+
+```{r eval = FALSE, include = FALSE}
+ardt_idl <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/IDL/MERRA2.ar_tag.IDL_v2b.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_idl, file = '_data/ARTMIP/idl.Rdata')
+
+```
+
+## Lora
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/Lora/MERRA2.ar_tag.Lora_v2.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_lora <- ymd_hms('1980-01-01 00:00:00') + hours(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_lora <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Lora/MERRA2.ar_tag.Lora_v2.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_lora, file = '_data/ARTMIP/lora.Rdata')
+
+```
+
+## Mundhenk
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/Mundhenk/MERRA2_native.ar_tag.Mundhenk_v3.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_mundhenk <- ymd_hms('1980-01-01 00:30:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_mundhenk <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Mundhenk/MERRA2_native.ar_tag.Mundhenk_v3.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_mundhenk, file = '_data/ARTMIP/mundhenk.Rdata')
+
+```
+
+## Payne
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/Payne/MERRA2_native.ar_tag.payne.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_payne <- ymd_hms('1980-01-01 00:00:00') + hours(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_payne <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Payne/MERRA2_native.ar_tag.payne.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_payne, file = '_data/ARTMIP/payne.Rdata')
+
+```
+
+## Reid
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/Reid/MERRA2_native.ar_tag.Reid500.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_reid <- ymd_hms('1980-01-01 00:00:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) +
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_reid <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Reid/MERRA2_native.ar_tag.Reid500.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_reid, file = '_data/ARTMIP/reid.Rdata')
+
+```
+
+## Shields - N/A
+
+### check that coordinates are loaded correctly
+
+```{r eval = FALSE}
+nc <- nc_open('_data/ARTMIP/Shields/MERRA2_native.ar_tag.Shields_v1.1hr.19800101-19801231.nc')
+
+# ncatt_get(nc, 'time')
+# t_shields <- ymd_hms('1980-01-01 00:00:00') + minutes(60*ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+# ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+#   mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+#   ggplot() + 
+#   geom_raster(aes(x = lon, y = lat, fill = value)) + 
+#   geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+```{r eval = FALSE}
+ardt_shields <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Shields/MERRA2_native.ar_tag.Shields_v1.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_shields, file = '_data/ARTMIP/shields.Rdata')
+
+```
+
+## Tempest
+
+### check that coordinates are loaded correctly
+
+```{r}
+nc <- nc_open('_data/ARTMIP/Tempest/MERRA2.ar_tag.TempestLR.1hr.1980.nc')
+
+ncatt_get(nc, 'time')
+t_tempest <- ymd_hms('1980-01-01 00:30:00') + minutes(ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to NE Pacific + WUS
+lon_subset <- lon[lon >= -150 & lon <= -110]
+lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+  mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+  ggplot() + 
+  geom_raster(aes(x = lon, y = lat, fill = value)) + 
+  geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = conus, fill = NA) + 
+  coord_sf(xlim = c(-150,-110)) + 
+  scale_fill_scico(palette = 'devon', direction = -1)
+
+```
+
+### load all years
+
+```{r}
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## loop over years and combine
+ardt_tempest <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Tempest/MERRA2.ar_tag.TempestLR.1hr.',yr,'.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_tempest, file = '_data/ARTMIP/tempest.Rdata')
+
+```
+
+## Wille - N/A
+
+```{r eval = FALSE}
+nc <- nc_open('_data/ARTMIP/Wille/MERRA2_native.ar_tag.Wille_v2.4.1hr.19800101-19801231.nc')
+
+ncatt_get(nc, 'time')
+t_wille <- ymd_hms('1980-01-01 00:00:00') + minutes(60*ncvar_get(nc, 'time'))
+
+lon <- ncvar_get(nc, 'lon'); head(lon)
+lat <- ncvar_get(nc, 'lat'); head(lat)
+
+## subset global grid to California
+lon_subset <- lon[(lon+xres/2) %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[(lat+yres/2) %in% unique(coordinates(grid_ca)[,'y'])]
+
+## find indices of lat/lon subset within global grid
+lon.match <- which(lon %in% lon_subset)
+lat.match <- which(lat %in% lat_subset)
+dim.start <- c(min(lon.match), min(lat.match), 1)
+dim.count <- c(length(lon.match), length(lat.match), -1)
+
+## get AR mask data
+ardt <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count)
+
+nc_close(nc)
+
+ardt %>% apply(c(1,2), mean) %>% data.frame %>% setNames(lat_subset) %>% 
+  mutate(lon = lon_subset) %>% pivot_longer(-lon, names_to = 'lat') %>% mutate(lat = toNumber(lat)) %>% 
+  ggplot() + 
+  geom_raster(aes(x = lon, y = lat, fill = value)) + 
+  geom_sf(data = california, fill = NA)
+
+mean(array_to_raster(ardt, lon_subset, lat_subset)) %>% 
+  raster.df %>% ggplot() +
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = california, fill = NA)
+
+```
+
+```{r eval = FALSE}
+ardt_wille <- 
+  foreach (yr = 1980:2019) %do% {
+    setTxtProgressBar(pb,yr)
+    filename <- paste0('_data/ARTMIP/Wille/MERRA2_native.ar_tag.Wille_v2.4.1hr.',yr,'0101-',yr,'1231.nc')
+    nc <- nc_open(filename)
+    temp <- ncvar_get(nc, 'ar_binary_tag', start = dim.start, count = dim.count) %>% 
+      array_to_raster(., lon_subset, lat_subset)
+    nc_close(nc)
+    temp
+  }
+save(ardt_wille, file = '_data/ARTMIP/wille.Rdata')
+
+```
+
+# transform rasters to match df_3hr
+
+```{r}
+load('_data/ARTMIP/arconnect.Rdata')
+load('_data/ARTMIP/climatenet.Rdata')
+load('_data/ARTMIP/guanwaliser.Rdata')
+load('_data/ARTMIP/lora.Rdata')
+load('_data/ARTMIP/mundhenk.Rdata')
+load('_data/ARTMIP/payne.Rdata')
+load('_data/ARTMIP/reid.Rdata')
+load('_data/ARTMIP/tempest.Rdata')
+
+ardt_arconnect_3hr <- ardt_arconnect %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_climatenet_3hr <- ardt_climatenet %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_guanwaliser_list <- foreach(yr = 1980:2019) %do% ardt_guanwaliser[[which(year(t_guanwaliser)==yr)]]
+ardt_guanwaliser_3hr <- ardt_guanwaliser_list %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_lora_3hr <- ardt_lora %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_lora_3hr[[40]] <- ardt_lora_3hr[[40]][[1:2920]] #extends past 12/31/2019
+ardt_mundhenk_3hr <- ardt_mundhenk %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_payne_3hr <- ardt_payne %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_reid_3hr <- ardt_reid %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+ardt_tempest_3hr <- ardt_tempest %>% 
+  lapply(function(x) stackApply(x, indices = rep(1:(dim(x)[3]/3), each = 3), fun = mean))
+
+```
+
+```{r}
+## get hourly/daily timeseries
+ts_merra <- 
+  seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- ts_merra %>% as.Date %>% unique
+
+start <- Sys.time()
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+artmip_3hr <-
+  foreach(
+    i = 1:ncell(grid_ca),
+    .options.snow = opts,
+    .packages = c('raster', 'foreach', 'tidyverse', 'lubridate')) %dopar% {
+      if (i %in% index_ca) {
+        ## create dataframe for the specified cell
+        index <- rowColFromCell(grid_ca, i)
+        data <-
+          data.frame(
+            ts = ts_merra[year(ts_merra)<=2019],
+            arconnect = ardt_arconnect_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            climatenet = ardt_climatenet_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            guanwaliser = ardt_guanwaliser_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            lora = ardt_lora_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            mundhenk = ardt_mundhenk_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            payne = ardt_payne_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            reid = ardt_reid_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.),
+            tempest = ardt_tempest_3hr %>%
+              lapply(function(x) c(x[index[1],index[2],])) %>%
+              reduce(c) %>% round %>% add_counter(.)
+            )
+
+        ## return dataframe
+        data
+      } else NULL
+    }
+stopCluster(cl)
+Sys.time() - start
+
+save(artmip_3hr, file = '_data/ARTMIP/artmip_3hr.Rdata')
+
+```

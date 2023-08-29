@@ -10,7 +10,7 @@ highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighti
 This script creates $df_3hr$ and $df_24hr$, datasets of hazard and impact for all MERRA-2 grid cells in California at temporal resolutions of 3 hours and 24 hours, respectively.
 
 ```{r setup, include = FALSE}
-knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
 # knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
 # knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')

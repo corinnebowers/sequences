@@ -199,6 +199,69 @@ ggsave('_figures/fig1_sequence.png', width = 6, height = 2, units = 'in', dpi = 
 
 ## Numerical results: AR days and sequence days
 
+```{r include = FALSE, eval = FALSE}
+## try a different precipitation dataset
+load('D:/2-sequences/_data/ppt_0606.Rdata')
+
+# takes about fifteen minutes to run
+pb <- txtProgressBar(min = 0, max = length(ppt_sparse), style = 3)
+cl <- makeCluster(cores)
+registerDoSNOW(cl)
+prism_seq <- 
+  foreach (
+    ii = 1:length(ppt_sparse), 
+    .packages = c('lubridate', 'tidyverse'),
+    .options.snow = opts,
+    .combine = 'rbind') %dopar% {
+      i <- prism_match %>% filter(nonzero) %>% slice(ii) %>% pull(grid_merra)
+      c(df_24hr[[i]] %>% 
+          filter(date %in% dates_ppt[ppt_sparse[[ii]]]) %>% 
+          count(ar) %>% 
+          mutate(pct = n/sum(n)) %>% filter(ar) %>% pull(pct),
+        df_24hr[[i]] %>% 
+          filter(date %in% dates_ppt[ppt_sparse[[ii]]]) %>% 
+          count(seq) %>% 
+          mutate(pct = n/sum(n)) %>% filter(seq) %>% pull(pct))
+  }
+stopCluster(cl)
+
+prism_match %>% 
+  select(x,y) %>% 
+  mutate(id = 1:nrow(.)) %>% 
+  rasterFromXYZ(crs = crs(prism_raster)) %>% 
+  mask(california %>% st_transform(crs(prism_raster))) %>% 
+  .[] %>%
+  cbind(prism_match) %>% setNames(c('cal', names(prism_match))) %>% 
+  mutate(nonzero2 = nonzero & !is.na(cal)) %>% 
+  filter(nonzero) %>% 
+  cbind(prism_seq %>% data.frame %>% setNames(c('pct.ar', 'pct.seq'))) %>% 
+  filter(nonzero2) %>%
+  select(pct.ar, pct.seq, x, y) %>% 
+  pivot_longer(starts_with('pct'), names_to = 'arseq', values_to = 'pct') %>% 
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = pct)) + 
+  facet_wrap(~arseq) +
+  geom_sf(data = california, fill = NA, size = 0.25) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
+    limits = c(0,1), labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_rect(fill = 'grey95', color = NA),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+
+```
+
+```{r}
+## try different runoff dataset
+```
+
 <br>
 Create dataframes
 
@@ -347,6 +410,38 @@ huc4 %>%
 
 ```
 
+```{r}
+## how many days are AR days and sequence days in the north coast? 
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
+  filter(pct_ar == max(pct_ar) | pct_seq == max(pct_seq))
+
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
+  filter(pct_ar == min(pct_ar) | pct_seq == min(pct_seq))
+
+```
+
 <br>
 Summary of extreme runoff days:
 
@@ -435,7 +530,7 @@ ggplot(hydro) +
     legend.position = 'bottom',
     legend.key.width = unit(0.5, 'in'), 
     legend.margin = margin(0,0,0,0))
-ggsave('_figures/fig2.png', width = 6, height = 3.5, units = 'in')
+ggsave('_figures/fig2.png', width = 6, height = 3.5, units = 'in', dpi = 600)
 
 ```
 
@@ -612,7 +707,7 @@ g1 + g2 + plot_spacer() +
   plot_annotation(tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') &
   theme(
     plot.tag = element_text(family = 'Segoe UI', face = 'bold', size = 10))
-ggsave('_figures/fig3_historic.png', width = 3, height = 6, units = 'in')
+ggsave('_figures/fig3_historic.png', width = 3, height = 6, units = 'in', dpi = 600)
 
 ```
 
@@ -821,7 +916,7 @@ gmap_blank <- gmap + guides(fill = guide_none())
 layout = 'AAAB\nCCCC'
 g.additive + gmap_blank + get_legend(gmap) + plot_spacer() + 
   plot_layout(design = layout, heights = c(10,1))
-ggsave('_figures/fig4.png', width = 6, height = 3.5, units = 'in')
+ggsave('_figures/fig4.png', width = 6, height = 3.5, units = 'in', dpi = 600)
 
 ```
 
@@ -1373,10 +1468,10 @@ de
 ```
 
 ```{r}
-ggsave(a, filename = '_figures/fig5a.png', width = 4.25, height = 2.25)
-ggsave(b, filename = '_figures/fig5b.png', width = 1.75, height = 1.75)
-ggsave(c, filename = '_figures/fig5c.png', width = 4.25, height = 1.5)
-ggsave(de, filename = '_figures/fig5de.png', width = 3, height = 1.75)
+ggsave(a, filename = '_figures/fig5a.png', width = 4.25, height = 2.25, dpi = 600)
+ggsave(b, filename = '_figures/fig5b.png', width = 1.75, height = 1.75, dpi = 600)
+ggsave(c, filename = '_figures/fig5c.png', width = 4.25, height = 1.5, dpi = 600)
+ggsave(de, filename = '_figures/fig5de.png', width = 3, height = 1.75, dpi = 600)
 
 ```
 
@@ -1569,8 +1664,8 @@ bc
 ```
 
 ```{r}
-ggsave(a, filename = '_figures/fig6a.png', width = 4.25, height = 2.25)
-ggsave(bc, filename = '_figures/fig6bc.png', width = 4.18, height = 1.75)
+ggsave(a, filename = '_figures/fig6a.png', width = 4.25, height = 2.25, dpi = 600)
+ggsave(bc, filename = '_figures/fig6bc.png', width = 4.18, height = 1.75, dpi = 600)
 
 ```
 
@@ -1831,7 +1926,7 @@ g.high[[1]] + g.high[[2]] + g.high[[3]] + g.high[[4]] + #g.high[[5]] +
     plot.tag = element_text(
       family = 'Segoe UI', face = 'bold', size = 10, margin = margin(-5,-5,-5,-5)),
     plot.caption = element_text(size = 8, hjust = 0.5, margin = margin(0,0,0,0)))
-ggsave('_figures/fig7_returnperiod.png', width = 6, height = 3.5, units = 'in')
+ggsave('_figures/fig7_returnperiod.png', width = 6, height = 3.5, units = 'in', dpi = 600)
 
 ```
 

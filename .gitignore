@@ -26,5 +26,6 @@ _data/streamflow/peakflows.Rmd
 ## _data/WLDAS
 _data/WLDAS/files/
 
-
+## results
+_results/_old/
 
