@@ -10,7 +10,7 @@ highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighti
 This script creates timeseries of streamflow, runoff, and normalized streamflow for selected USGS streamgages in California. It will NOT run beginning-to-end without interruption. Please see the notes throughout to identify locations where additional analysis is needed from outside of the R environment. 
 
 ```{r setup, include = FALSE}
-knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
 # knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
 # knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
@@ -482,10 +482,18 @@ huc_runoff <- huc8_runoff %>%
 
 ```
 
-## convert to match MERRA grid
+## checkpoint
 
 ```{r}
+save(huc_runoff, file = '_data/streamflow/_checkpoints/huc_runoff_0928.Rdata')
+
+```
+
+# convert to match MERRA grid
+
 ## get conversion weights from huc8 --> grid
+
+```{r}
 grid_convert <- grid_ca %>% 
   rasterToPolygons() %>% 
   st_as_sf %>%

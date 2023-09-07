@@ -24,7 +24,7 @@ This script creates three dataframes for one of the preprocessed ARDTs specified
 * SCAFET, v1                      # N/A
 * Walton                          # N/A
 
-The dataframes are: a list of three-hour datasets, a list of twenty-four-hour datasets, and an overall event catalog. 
+The dataframes are: a list of three-hour datasets, a list of twenty-four-hour datasets, and list of event catalogs, separated by MERRA-2 grid cell. 
 
 
 ```{r setup, include = FALSE}
@@ -46,15 +46,19 @@ source('_scripts/create_df_functions.R')
 
 mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
 
+## turn progress bars on/off
+progress <- TRUE
+if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+
 ```
 
 ## choose ARDT
 
 ```{r}
 ardtnames <- c(
-  'brand','cascade','connect','gershunov','goldenson','guanwaliser','lbnl',
+  'brands','cascade','connect','gershunov','goldenson','guanwaliser','lbnl',
   'lora','mattingly','mundhenk','paynemagnusdottir','rutz','scafet','walton')
-ardtname <- 'rutz'
+ardtname <- 'scafet'
 
 ```
 
@@ -77,14 +81,13 @@ ts_artmip <-
 
 ```{r}
 load('_scripts/_checkpoints/df_3hr_1209.Rdata')
-load('_scripts/_checkpoints/df_24hr_0209.Rdata')
 
 ```
 
 ### ARs
 
 ```{r}
-load('_data/ARTMIP/Tier 1/ardt_rutz.Rdata')
+load(paste0('_data/ARTMIP/Tier 1/ardt_',ardtname,'.Rdata'))
 
 ```
 
@@ -137,20 +140,19 @@ mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
 ```{r}
 ## convert from list by year to list by location
 start <- Sys.time()
-pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 cl <- makeCluster(cores)
 registerDoSNOW(cl)
 artmip_3hr <-
   foreach(
     i = 1:ncell(grid_ca),
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
     .export = c('assign_AR_cat', 'add_counter', 'add_category')) %dopar% {
       if (i %in% index_ca) {
         index <- rowColFromCell(grid_ca, i)
         data <-
           data.frame(
-            ts = ts_artmip,
+            ts = ts_artmip, #have to do ts_artmip[-1] for SCAFET
             count = ardt[1:37] %>%
               lapply(function(x) c(x[index[1],index[2],])) %>%
               reduce(c) %>% round %>% add_counter(.))
@@ -175,15 +177,15 @@ Sys.time() - start
 
 ```{r}
 start <- Sys.time()
-pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 cl <- makeCluster(cores)
 registerDoSNOW(cl)
 artmip_24hr <-
   foreach(
     i = 1:ncell(grid_ca),
-    .options.snow = opts,
+    .options.snow = if (progress) opts,
     .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
     .export = c('mode', 'setNA')) %dopar% {
+      # if (progress) setTxtProgressBar(pb,i)
       if (i %in% index_ca) {
         artmip_3hr[[i]] %>% 
           group_by(date = as.Date(ts)) %>% 
@@ -215,15 +217,15 @@ Sys.time() - start
 
 ```{r}
 start <- Sys.time()
-pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
-cl <- makeCluster(cores)
-registerDoSNOW(cl)
-artmip_3hr <-
+# cl <- makeCluster(cores)
+# registerDoSNOW(cl)
+artmip_catalog <-
   foreach(
     i = 1:ncell(grid_ca),
     .options.snow = opts,
     .packages = c('raster', 'foreach', 'tidyverse', 'lubridate'),
-    .export = c('toNumber')) %dopar% {
+    .export = c('toNumber')) %do% {
+      if (progress) setTxtProgressBar(pb,i)
       if (i %in% index_ca) {
         artmip_3hr[[i]] %>% 
           filter(!is.na(ar.count)) %>% 
@@ -232,6 +234,7 @@ artmip_3hr <-
             start = ts[1], end = ts[length(ts)], 
             maxivt = max(ivt), duration = max(duration), 
             ar.cat = ar.cat[1],
+            seq = seq[1], seq.count = seq.count[1],
             prev.inter = prev.inter[1],
             next.inter = next.inter[length(ar.count)]) %>% 
           mutate(
@@ -247,33 +250,9 @@ artmip_3hr <-
             by = 'ar.count') %>% 
           mutate(id = i)
       } else NULL
-    } %>% reduce(rbind)
-stopCluster(cl)
+    }
+# stopCluster(cl)
 Sys.time() - start
-
-```
-
-```{r}
-artmip_3hr[[i]] %>% 
-  filter(!is.na(ar.count)) %>% 
-  group_by(ar.count) %>% 
-  summarize(
-    start = ts[1], end = ts[length(ts)], 
-    maxivt = max(ivt), duration = max(duration), 
-    ar.cat = ar.cat[1],
-    prev.inter = prev.inter[1],
-    next.inter = next.inter[length(ar.count)]) %>% 
-  mutate(
-    prev.cat = c(NA, ar.cat[-nrow(.)]),
-    next.cat = c(ar.cat[-1], NA),
-    prev.inter = c(NA, prev.inter[-1]), 
-    next.inter = c(next.inter[-nrow(.)], NA)) %>% 
-  left_join(
-    artmip_24hr[[i]] %>% 
-      filter(!is.na(ar.count)) %>% 
-      group_by(ar.count = toNumber(ar.count)) %>% 
-      summarize(across(c(starts_with('ncei'), starts_with('claims')), Sum)),
-    by = 'ar.count')
 
 ```
 
@@ -284,9 +263,6 @@ artmip_3hr[[i]] %>%
 save(
   artmip_3hr, artmip_24hr, artmip_catalog,
   file = paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
-
-# ## load from file
-# load(paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
 
 ```
 

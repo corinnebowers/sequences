@@ -834,7 +834,7 @@ g1 <-
   geom_ribbon(
     aes(x = cat, ymin = lower, ymax = upper, group = data, fill = data, alpha = data)) + 
   geom_line(
-    data = data.frame(x = 1:5, y = c(0.1,0.3,2,19,259)),
+    data = data.frame(x = 1:5, y = c(0.1,0.4,3,20,260)),
     aes(x=x, y=y/y[1], linetype = 'Corringham et al. (14)')) +
   scale_x_continuous(labels = paste0('AR', 1:5)) + 
   scale_y_log10('Loss Multiplier', labels = comma_format(suffix = 'x')) + logticks('l') +  
@@ -1415,27 +1415,38 @@ coef.new <- rbind(
 ```
 
 ```{r}
-ggplot(coef.new) +
+coef.new %>% 
+  rbind(expand.grid(ar.cat = 1:4, prev.cat = 0, source = c('NCEI','NFIP'), est = 1, lower = 1, upper = 1)) %>% 
+  mutate(ar.cat = factor(ar.cat)) %>% 
+  ggplot() +
   geom_hline(yintercept = 1, color = 'grey50') + 
-  geom_point(aes(x = prev.cat, y = est, group = source, color = source, shape = source), size = 1.5) +
-  geom_line(aes(x = prev.cat, y = est, group = source, color = source), size = 0.75) +
-  geom_ribbon(aes(x = prev.cat, ymin = lower, ymax = upper, group = source, fill = source, alpha = source)) +
-  scale_x_continuous(breaks = 0:5, labels = c('No Previous\nEvent', paste0('AR',1:5))) + 
+  geom_ribbon(aes(x = prev.cat, ymin = lower, ymax = upper, group = ar.cat, fill = ar.cat), alpha = 0.25) +
+  geom_point(aes(x = prev.cat, y = est, group = ar.cat, color = ar.cat, shape = ar.cat), size = 1.5) +
+  geom_line(aes(x = prev.cat, y = est, group = ar.cat, color = ar.cat), size = 0.75) +
+  scale_x_continuous(breaks = 0:4, labels = c('No Previous\nEvent', paste0('AR',c(1,2,3,'4-5')))) + 
   scale_y_log10(labels = comma_format(suffix = 'x')) + logticks('l') + 
-  scale_color_manual('', values = roma.colors[c(2,5)]) + 
-  scale_fill_manual('', values = roma.colors[c(2,5)]) + 
-  scale_shape_manual('', values = c(17,16)) + 
-  scale_alpha_manual('', values = c(0.35, 0.25)) + 
-  facet_wrap(~paste0('Primary Event: AR',ar.cat)) + 
+  scale_color_manual(
+    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
+    values = roma.colors[c(5,4,2,1)]) +
+  scale_fill_manual(
+    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
+    values = roma.colors[c(5,4,2,1)]) +
+  scale_shape_manual(
+    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
+    values = c(15,17:19)) +
+  # scale_alpha_manual('', values = c(0.35, 0.25)) + 
+  facet_wrap(~source) + 
   ggtitle(waiver(), subtitle = '') +
   labs(x = 'Previous Event Rank', y = 'Primary Event Loss Multiplier') + 
   theme(
     text = element_text(family = 'Segoe UI', size = 9),
     strip.background = element_rect(fill = 'grey95', color = NA),
     strip.text = element_text(margin = margin(2,2,2,2)),
-    panel.grid.major.y = element_line(size = 0.25),
-    legend.key.width = unit(0.25, 'in'))
-ggsave('_figures-impacts/reviewer_figc.png', width = 7.25, height = 6)
+    panel.grid.major.y = element_line(size = 0.25), 
+    panel.spacing = unit(0.2,'in'),
+    legend.key.width = unit(0.25, 'in'),
+    legend.position = 'bottom')
+ggsave('_figures-impacts/reviewer_figc.png', width = 6, height = 3.5)
 
 ```
 

@@ -17,7 +17,7 @@ This markdown script reproduces the figures and numerical results associated wit
 Please note that the figures in the markdown file may not exactly match the published version because of formatting and scale differences.
 
 ```{r setup, include = FALSE}
-knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center', fig.width=6)
 # rm(list=ls())
@@ -60,9 +60,9 @@ Load MERRA-2 catalogs
 load('_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ## 24-hour dataset
-load('_scripts/_checkpoints/df_24hr_1209.Rdata')
+load('_scripts/_checkpoints/df_24hr_0209.Rdata')
 
-## metadata 
+## date metadata 
 ts_merra <- seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
 dates_merra <- unique(as.Date(ts_merra))
 
@@ -90,6 +90,46 @@ decades <-
   mutate(decade = ceiling(yr/10)-202)
 
 ```
+
+# reviewer comments
+
+```{r}
+pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+p.precip <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    setTxtProgressBar(pb,i)
+    if (i %in% index_ca) {
+      dx <- 25
+      df_3hr[[i]] %>% 
+        group_by(ivt.bucket = round(ivt/dx)*dx) %>% 
+        count(wet = precip > 1e-2) %>% 
+        mutate(pct = n/sum(n)) %>% 
+        ungroup %>% filter(wet) %>% 
+        transmute(ivt.bucket, pct, id = i) 
+    }
+  }
+
+left_join(raster.df(grid_ca), raster.df(grid_huc4), by = c('x','y')) %>% 
+  rename(id = value.x, huc4 = value.y) %>% 
+  filter(!is.na(huc4)) %>% left_join(p.precip) %>% 
+  ggplot() + 
+  geom_hline(yintercept = 0.5, color = 'grey80') +
+  geom_vline(xintercept = 250, color = 'grey80') + 
+  geom_line(
+    aes(x = ivt.bucket, y = pct, group = factor(id)), size = 0.25) + 
+  facet_wrap(~paste('HUC',huc4), nrow = 2) + 
+  scale_x_origin('IVT (kg/m/s)', breaks = 250*(0:10)) +
+  scale_y_origin('Probability of Precipitation', labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 10),
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+    panel.grid.major = element_line(size = 0.25),
+    strip.background = element_rect(fill = 'grey95', color = NA),
+    strip.text = element_text(family = 'Segoe UI', margin = margin(2,2,2,2)))
+ggsave('C:/Users/cbowers/Desktop/ppt_prob.png', width = 6, height = 3, dpi = 600)
+
+```
+
 
 # 2) Methodology
 
@@ -198,69 +238,6 @@ ggsave('_figures/fig1_sequence.png', width = 6, height = 2, units = 'in', dpi = 
 # 3) Results: Hydrologic Hazard
 
 ## Numerical results: AR days and sequence days
-
-```{r include = FALSE, eval = FALSE}
-## try a different precipitation dataset
-load('D:/2-sequences/_data/ppt_0606.Rdata')
-
-# takes about fifteen minutes to run
-pb <- txtProgressBar(min = 0, max = length(ppt_sparse), style = 3)
-cl <- makeCluster(cores)
-registerDoSNOW(cl)
-prism_seq <- 
-  foreach (
-    ii = 1:length(ppt_sparse), 
-    .packages = c('lubridate', 'tidyverse'),
-    .options.snow = opts,
-    .combine = 'rbind') %dopar% {
-      i <- prism_match %>% filter(nonzero) %>% slice(ii) %>% pull(grid_merra)
-      c(df_24hr[[i]] %>% 
-          filter(date %in% dates_ppt[ppt_sparse[[ii]]]) %>% 
-          count(ar) %>% 
-          mutate(pct = n/sum(n)) %>% filter(ar) %>% pull(pct),
-        df_24hr[[i]] %>% 
-          filter(date %in% dates_ppt[ppt_sparse[[ii]]]) %>% 
-          count(seq) %>% 
-          mutate(pct = n/sum(n)) %>% filter(seq) %>% pull(pct))
-  }
-stopCluster(cl)
-
-prism_match %>% 
-  select(x,y) %>% 
-  mutate(id = 1:nrow(.)) %>% 
-  rasterFromXYZ(crs = crs(prism_raster)) %>% 
-  mask(california %>% st_transform(crs(prism_raster))) %>% 
-  .[] %>%
-  cbind(prism_match) %>% setNames(c('cal', names(prism_match))) %>% 
-  mutate(nonzero2 = nonzero & !is.na(cal)) %>% 
-  filter(nonzero) %>% 
-  cbind(prism_seq %>% data.frame %>% setNames(c('pct.ar', 'pct.seq'))) %>% 
-  filter(nonzero2) %>%
-  select(pct.ar, pct.seq, x, y) %>% 
-  pivot_longer(starts_with('pct'), names_to = 'arseq', values_to = 'pct') %>% 
-  ggplot() + 
-  geom_raster(aes(x=x, y=y, fill = pct)) + 
-  facet_wrap(~arseq) +
-  geom_sf(data = california, fill = NA, size = 0.25) + 
-  scale_fill_scico(
-    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
-    limits = c(0,1), labels = percent) + 
-  theme(
-    text = element_text(family = 'Segoe UI', size = 8),
-    axis.title = element_blank(),
-    axis.text.x = element_text(angle = 90, vjust = 0.5),
-    strip.background.y = element_blank(), strip.text.y = element_blank(),
-    plot.background = element_rect(fill = 'white', color = NA),
-    strip.background.x = element_rect(fill = 'grey95', color = NA),
-    legend.position = 'bottom',
-    legend.key.width = unit(0.5, 'in'), 
-    legend.margin = margin(0,0,0,0))
-
-```
-
-```{r}
-## try different runoff dataset
-```
 
 <br>
 Create dataframes
@@ -379,6 +356,40 @@ cat(paste0(
 ```
 
 <br>
+How many days are AR days and sequence days in the North Coast? 
+
+```{r}
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
+  filter(pct_ar == max(pct_ar) | pct_seq == max(pct_seq))
+
+huc4 %>% 
+  st_drop_geometry %>% 
+  select(huc4, name) %>% 
+  cbind(
+    pct_ar = hydro %>% 
+      filter(arseq == 'ar' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
+    pct_seq = hydro %>% 
+      filter(arseq == 'seq' & extreme == 'all') %>% 
+      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
+      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
+  filter(pct_ar == min(pct_ar) | pct_seq == min(pct_seq))
+
+```
+
+<br>
 Summary of extreme precipitation days:
 
 ```{r}
@@ -407,38 +418,6 @@ huc4 %>%
   tab_options(
     heading.background.color = '#d9d9d9', 
     column_labels.background.color = '#f2f2f2')
-
-```
-
-```{r}
-## how many days are AR days and sequence days in the north coast? 
-huc4 %>% 
-  st_drop_geometry %>% 
-  select(huc4, name) %>% 
-  cbind(
-    pct_ar = hydro %>% 
-      filter(arseq == 'ar' & extreme == 'all') %>% 
-      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
-    pct_seq = hydro %>% 
-      filter(arseq == 'seq' & extreme == 'all') %>% 
-      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
-  filter(pct_ar == max(pct_ar) | pct_seq == max(pct_seq))
-
-huc4 %>% 
-  st_drop_geometry %>% 
-  select(huc4, name) %>% 
-  cbind(
-    pct_ar = hydro %>% 
-      filter(arseq == 'ar' & extreme == 'all') %>% 
-      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c,
-    pct_seq = hydro %>% 
-      filter(arseq == 'seq' & extreme == 'all') %>% 
-      select(x, y, value) %>% rasterFromXYZ(crs = crs(grid_ca)) %>% 
-      raster::extract(huc4, fun = mean, na.rm = TRUE) %>% c)  %>% 
-  filter(pct_ar == min(pct_ar) | pct_seq == min(pct_seq))
 
 ```
 

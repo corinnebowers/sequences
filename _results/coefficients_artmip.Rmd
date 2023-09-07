@@ -1,0 +1,362 @@
+---
+title: "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California"
+date: "2023-04-11"
+author: Corinne Bowers
+output:
+  html_document:
+    toc: true 
+    toc_float: true
+    #toc_depth: 3  
+    code_folding: hide
+    number_sections: false 
+    theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+    highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+# Setup
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center', fig.width=6)
+# rm(list=ls())
+
+```
+
+## Functions & packages
+
+```{r warning=FALSE}
+source('_data/setup_impacts.R')
+source('_scripts/create_df_functions.R')
+
+## set number of bootstrapped samples
+boot <- 1000
+
+## turn progress bars on/off
+progress <- FALSE
+if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+
+## set random seed for reproducibility
+set.seed(2023)
+
+```
+
+## Define ARDT 
+
+```{r}
+ardtnames <- c(
+  'brands','cascade','connect','gershunov','goldenson','guanwaliser','lbnl',
+  'lora','mattingly','mundhenk','paynemagnusdottir','rutz','scafet','walton')
+ardtname <- 'lbnl'
+
+```
+
+## Load data
+
+```{r}
+load(paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
+
+df_3hr <- artmip_3hr
+df_24hr <- artmip_24hr
+df_catalog <- artmip_catalog
+
+```
+
+# Create AR event catalog 
+
+## Combine df_catalog into catalog
+
+```{r}
+## keep WY 1981-2021 (for category analysis)
+catalog.full <- df_catalog %>% 
+  reduce(rbind) %>% 
+  rename(ar.start = start, ar.end = end) %>% 
+  mutate(wy = wateryear(ar.start)) %>%
+  filter(wateryear(ar.start) %in% 1981:2021)
+  
+## keep WY 1997-2021 (for impact analysis)
+catalog <- catalog.full %>%
+  filter(wateryear(ar.start) %in% 1997:2021) %>%
+  mutate(
+    ncei_damage = setNA(ncei_damage,0), 
+    claims_value = setNA(claims_value,0),
+    ncei_nonzero = ncei_event > 0,  # %%%%%%%%%%%%%%%%% should this be different?
+    nfip_nonzero = claims_num > 0) # %%%%%%%%%%%%%%%%% should this be different?
+
+```
+
+# Result #1: Temporal compounding and AR category
+
+```{r eval = FALSE}
+prox <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb, i)
+    if (i %in% index_ca) {
+      df_3hr[[i]] %>% 
+        filter(wateryear(ts) %in% 1981:2021) %>% 
+        filter(ar.cat > 0) %>% 
+        group_by(ar.count) %>% 
+        summarize(
+          ar.cat = ar.cat[1], 
+          before = prev.inter[1]<=5, 
+          after = next.inter[length(ar.count)]<=5) %>% 
+        group_by(ar.cat) %>% 
+        summarize(
+          n = length(ar.cat),
+          and = Sum(before & after)/n, or = Sum(before | after)/n) %>% 
+        mutate(id = i)    
+    }
+  } %>% 
+  left_join(raster.df(grid_ca), by = c('id' = 'value'))
+
+```
+
+```{r eval = FALSE, fig.width = 6, fig.height = 3.5}
+g.or <- map(
+  .x = 1:5, .f = ~prox %>% 
+    filter(ar.cat == .x) %>%
+    ggplot() + 
+    geom_point(aes(x=x, y=y, color = or, size = n)) + 
+    geom_sf(data = cal, fill = NA, color = 'black', size = 0.25) + 
+    # scale_color_scico(
+    #   'Percentage of\nAR Events',  labels = percent,
+    #   palette = 'lapaz', direction = -1, limits = c(0,1)) + 
+    scale_color_distiller(
+      'Percentage of\nAR Events',  labels = percent,
+      palette = 'Purples', limits = c(0,1), direction = 1, na.value = NA) + 
+    scale_size_area(max_size = 2.5) + 
+    guides(size = guide_none()) + #, color = guide_colorbar(direction = 'horizontal')) + 
+    theme(
+      text = element_text(family = 'Segoe UI', size = 9), 
+      strip.background = element_rect(color = NA, fill = 'grey95'),
+      strip.placement = 'outside',
+      strip.text = element_text(family = 'Segoe UI', size = 9), 
+      axis.line = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(),
+      plot.margin = margin(0, 0, 0, 0, "pt"),
+      axis.title = element_blank(), axis.text.x = element_blank(),
+      legend.title = element_text(margin = margin(0,0,5,0))))
+      # legend.position = 'bottom', 
+      # legend.key.width = unit(0.75,'in')))
+g.or[[1]] <- g.or[[1]] + 
+  facet_grid('Adjacent ARs' ~ 'AR1', switch = 'y')
+g.or[[2]] <- g.or[[2]] +
+  facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.or[[3]] <- g.or[[3]] + 
+  facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.or[[4]] <- g.or[[4]] + 
+  facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.or[[5]] <- g.or[[5]] + 
+  facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+
+plot.or <- wrap_plots(g.or) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
+plot.or 
+
+```
+
+```{r eval = FALSE, fig.width = 6, fig.height = 3.5}
+g.and <- map(
+  .x = 1:5, .f = ~prox %>% 
+    filter(ar.cat == .x) %>%
+    ggplot() + 
+    geom_point(aes(x=x, y=y, color = and, size = n)) + 
+    geom_sf(data = cal, fill = NA, color = 'black', size = 0.25) + 
+    # scale_color_scico(
+    #   'Percentage of\nAR Events',  labels = percent,
+    #   palette = 'lapaz', direction = -1, end = 0.9) + 
+    scale_color_distiller(
+      'Percentage of\nAR Events',  labels = percent,
+      palette = 'Blues', limits = c(0,0.5), direction = 1, na.value = 'darkblue') + 
+    scale_size_area(max_size = 2.5) + 
+    guides(size = guide_none()) + #, color = guide_colorbar(direction = 'horizontal')) + 
+    theme(
+      text = element_text(family = 'Segoe UI', size = 9),
+      strip.background = element_rect(color = NA, fill = 'grey95'),
+      strip.placement = 'outside',
+      strip.text = element_text(family = 'Segoe UI', size = 9), 
+      axis.line = element_blank(), axis.ticks = element_blank(), axis.text = element_blank(),
+      plot.margin = margin(0, 0, 0, 0, "pt"),
+      axis.title = element_blank(),
+      legend.title = element_text(margin = margin(0,0,5,0))))
+      # legend.position = 'bottom', 
+      # legend.key.width = unit(0.75,'in')))
+g.and[[1]] <- g.and[[1]] + 
+  facet_grid('Sandwiched ARs'~., switch = 'y')
+g.and[[2]] <- g.and[[2]] + 
+  # facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.and[[3]] <- g.and[[3]] + 
+  # facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.and[[4]] <- g.and[[4]] + 
+  # facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+g.and[[5]] <- g.and[[5]] + 
+  # facet_grid(.~paste0('AR', ar.cat)) + 
+  theme(axis.text.y = element_blank())
+
+plot.and <- wrap_plots(g.and) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
+plot.and 
+
+```
+
+```{r eval = FALSE, fig.width = 6, fig.height = 3.5}
+# g.list <- c(g.or, g.and)
+# wrap_plots(g.list) + guide_area() + 
+#   plot_layout(
+#     design = 'abcde\nfghij\nkkkkk', guides = 'collect', 
+#     heights = c(8,8,1))
+
+plot.or / plot.and
+ggsave('_figures-impacts/fig1_coincidence.png', width=7.25, height=3.25, units = 'in', dpi = 500)
+
+```
+
+# Result #2: Sequences and likelihood of impact
+
+## Create daily dataframe 
+
+```{r}
+daily <- 
+  map_dfr(
+    .x = index_ca, 
+    .f = ~df_24hr[[.x]] %>% select(-ends_with('rp2')) %>% mutate(id = .x)) %>% 
+  mutate(
+    impactday = claims_num>0 | ncei_event,
+    lossday = claims_value>0 | ncei_damage>0) %>% 
+  mutate(wy = wateryear(date)) %>% 
+  filter(wy %in% 1997:2021)
+
+```
+
+## Fit regression
+
+```{r}
+f2 <- felm(
+  impactday ~ ar*seq - seq | factor(id) + factor(wy), 
+  data = daily, exactDOF = TRUE)
+# summary(f2, robust = TRUE) 
+
+```
+
+# Result #3: Sequences and magnitude of impact
+
+```{r}
+## NCEI
+index.ncei.zero <- which(catalog$ncei_damage == 0)
+index.ncei.nonzero <- which(catalog$ncei_damage > 0)
+coef.under <-
+  foreach (b = 1:boot) %do% {
+    felm(
+      log10(ncei_damage+1) ~ factor(ar.cat) + seq | factor(id) + factor(wy),
+      data = catalog %>% 
+        slice(c(index.ncei.nonzero, sample(
+          index.ncei.zero, size = 2*length(index.ncei.nonzero), replace = FALSE))),
+      exactDOF = TRUE) %>%
+      summary %>% coef
+  } %>% 
+  lapply(function(x) {
+    if (dim(x)[1] < 5) {
+      x %>% data.frame %>% rownames_to_column %>%
+        full_join(data.frame(rowname = c(paste0('factor(ar.cat)',2:5),'seqTRUE'))) %>%
+        arrange(rowname) %>% 
+        column_to_rownames %>% as.matrix
+    } else x
+  }) %>% abind(along = 3) %>% apply(c(1,2),Mean)
+df.ncei <- coef.under %>% data.frame %>%
+  rownames_to_column %>% 
+  transmute(
+    cat = c(gsub('factor\\(ar\\.cat\\)','',rowname[-length(rowname)]),NA),
+    seq = c(rep(NA, nrow(.)-1),TRUE),
+    est = 10^Estimate, 
+    lower = 10^(Estimate-2*Std..Error), 
+    upper = 10^(Estimate+2*Std..Error)) %>%
+  rbind(data.frame(cat = 1, seq = NA, est = 1, lower = 1, upper = 1))
+
+## NFIP
+index.nfip.zero <- which(catalog$claims_value == 0)
+index.nfip.nonzero <- which(catalog$claims_value > 0)
+coef.under <- 
+  foreach (b = 1:boot) %do% {
+    felm(
+      log10(claims_value+1) ~ factor(ar.cat) + seq | factor(id) + factor(wy),
+      data = catalog %>% 
+        slice(c(index.nfip.nonzero, sample(
+          index.nfip.zero, size = 2*length(index.nfip.nonzero), replace = FALSE))),
+      exactDOF = TRUE) %>% 
+      summary %>% coef
+  } %>% 
+  lapply(function(x) {
+    if (dim(x)[1] < 5) {
+      x %>% data.frame %>% rownames_to_column %>%
+        full_join(data.frame(rowname = c(paste0('factor(ar.cat)',2:5),'seqTRUE'))) %>%
+        arrange(rowname) %>% 
+        column_to_rownames %>% as.matrix
+    } else x
+  }) %>% abind(along = 3) %>% apply(c(1,2),Mean)
+df.nfip <- coef.under %>% data.frame %>% 
+  rownames_to_column %>% 
+  transmute(
+    cat = c(gsub('factor\\(ar\\.cat\\)','',rowname[-length(rowname)]),NA),
+    seq = c(rep(NA, nrow(.)-1),TRUE),
+    est = 10^Estimate, 
+    lower = 10^(Estimate-2*Std..Error), 
+    upper = 10^(Estimate+2*Std..Error)) %>% 
+  rbind(data.frame(cat = 1, seq = NA, est = 1, lower = 1, upper = 1))
+
+```
+
+# Save coefficient estimates
+
+```{r}
+impact <- coef(summary(f2)) %>% data.frame
+
+save(impact, df.ncei, df.nfip, file = paste0('_data/ARTMIP/Tier 1/coef_',ardtname,'.Rdata'))
+
+```
+
+
+```{r}
+
+impact.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    impact %>% data.frame %>% rownames_to_column %>% mutate(ardt = x)
+  }
+ggplot(impact.all) + 
+  geom_point(aes(y = ardt, x = Estimate, color = ardt=='rutz')) + 
+  geom_linerange(
+    aes(y = ardt, xmin = Estimate-2*Std..Error, xmax = Estimate+2*Std..Error, color = ardt=='rutz')) + 
+  facet_wrap(~rowname)
+
+ncei.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    df.ncei %>% mutate(ardt = x)
+  }
+nfip.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    df.nfip %>% mutate(ardt = x)
+  }
+
+ggplot(ncei.all %>% filter(seq) %>% filter(ardt != 'lbnl')) + 
+  geom_vline(xintercept = 1, color = 'grey70') + 
+  geom_point(aes(y = ardt, x = est)) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper)) +
+  geom_vline(aes(xintercept = 10^mean(log10(est))), linetype = 'dotted') + 
+  scale_x_log10() + annotation_logticks(sides = 'b', size = 0.25, color = 'grey25') + 
+  theme(panel.grid.major.x = element_line(size = 0.25))
+ggplot(nfip.all %>% filter(seq) %>% filter(ardt != 'lbnl')) + 
+  geom_vline(xintercept = 1, color = 'grey70') + 
+  geom_point(aes(y = ardt, x = est)) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper)) +
+  geom_vline(aes(xintercept = 10^mean(log10(est))), linetype = 'dotted') + 
+  scale_x_log10() + annotation_logticks(sides = 'b', size = 0.25, color = 'grey25') + 
+  theme(panel.grid.major.x = element_line(size = 0.25))
+
+```
+
