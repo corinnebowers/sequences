@@ -12,11 +12,12 @@ The markdown files are also available as interactive HTML documents through the 
 
 * [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures_sequences.html) replicates all figures and numerical results from the main body of the paper, excepting Figure 2.
 * [reproduce_fig2_sequences.html](https://corinnebowers.github.io/reproduce_fig2_sequences.html) replicates Figure 2 from the main body of the paper.
-* [supplementary_figures_sequences.html](https://corinnebowers.github.io/supplementary_figures_sequences.html) presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
+* [supplementary_figures_sequences.html](https://corinnebowers.github.io/supplementary_figures_sequences.html) presents the parameter sensitivity analysis and replicates all figures from the Supplementary Information.
 
 ## Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California
 
 * [reproduce_figures_impacts.html](https://corinnebowers.github.io/reproduce_figures_impacts.html) replicates all figures and numerical results from the main body of the paper.
+* [supplementary_figures_impacts.html](https://corinnebowers.github.io/supplementary_figures_impacts.html) replicates all figures from the Supplementary Information, including the AR detection algorithm sensitivity analysis.
 
 If you have any further questions please contact Corinne Bowers. 
 
