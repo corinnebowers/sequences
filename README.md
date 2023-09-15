@@ -2,13 +2,13 @@
 
 <a href="https://zenodo.org/badge/latestdoi/542767925"><img src="https://zenodo.org/badge/542767925.svg" alt="DOI"></a>
 
-This repository provides data, code, and supplementary information associated with the papers "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates" (doi:XX) and "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California" (doi:XX).
+This repository provides data, code, and supplementary information associated with the papers "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections" ([doi:essoar.167590838.86645781/v1](https://doi.org/10.22541/essoar.167590838.86645781/v1)) and "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California" (doi:XX).
 The `_data` folder contains code to collect all of the hydroclimatic and socioeconomic data used to generate the papers' conclusions.
 The `_scripts` folder contains code to manipulate the data into timeseries datasets for all grid cells within California. 
 The `results` folder contains code and formatted markdown files that reproduce all figures and numerical results from the papers.
 The markdown files are also available as interactive HTML documents through the links below.
 
-## Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates
+## Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections
 
 * [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures_sequences.html) replicates all figures and numerical results from the main body of the paper, excepting Figure 2.
 * [reproduce_fig2_sequences.html](https://corinnebowers.github.io/reproduce_fig2_sequences.html) replicates Figure 2 from the main body of the paper.
