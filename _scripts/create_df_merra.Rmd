@@ -133,7 +133,7 @@ Sys.time() - start
 
 ```{r}
 ## save out
-save(data_3hr, file = '_scripts/_checkpoints/df_3hr_1209.Rdata')
+save(data_3hr, file = '_scripts/_checkpoints/data_3hr_1209.Rdata')
 
 # ## load from file
 # load('_scripts/_checkpoints/data_3hr_1209.Rdata')

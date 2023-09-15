@@ -1,0 +1,825 @@
+---
+title: "Figure 2"
+subtitle: "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections"
+date: "2023-09-15"
+author: Corinne Bowers
+output:
+  html_document:
+    toc: true 
+    toc_float: true
+    #toc_depth: 3  
+    code_folding: hide
+    number_sections: false 
+    theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+    highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This markdown script reproduces Figure 2 from the paper "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections" (https://doi.org/10.22541/essoar.167590838.86645781/v1).
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
+rm(list=ls())
+
+```
+
+# Setup
+
+```{r}
+source('_data/setup.R')
+
+## load required packages
+require(prism); prism_set_dl_dir('D:/Research/_data/PRISM/files')
+require(patchwork)
+# require(mapview)
+# require(glue)
+
+```
+
+```{r}
+## 24-hour dataset
+load('_scripts/_checkpoints/df_24hr_0209.Rdata')
+
+## date metadata 
+ts_merra <- seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
+dates_merra <- unique(as.Date(ts_merra))
+
+## progress bar
+progress <- FALSE
+
+## geospatial 
+cal <- st_union(california)
+
+```
+
+# Precipitation
+
+## Create dataframe
+
+### Load file names
+
+```{r}
+# ## note: do not need to run this again (takes a long time)
+# get_precip_dailys(
+#   type = 'ppt', 
+#   minDate = '1981-01-01', 
+#   maxDate = '2021-12-31', 
+#   keepZip = FALSE)
+
+```
+
+```{r}
+# ## load file names
+# ppt <-
+#   prism_archive_subset(
+#     type = 'ppt', temp_period = 'daily',
+#     dates = dates_merra)
+# 
+# ## filter to wet season
+# dates_precip <- 
+#   lapply(ppt, function(x) x %>% str_split('_') %>% .[[1]] %>% .[5] %>% ymd) %>% 
+#   reduce(c)
+# ppt <- ppt[month(dates_precip) %in% c(10:12,1:3)]
+# dates_precip <- dates_precip[month(dates_precip) %in% c(10:12,1:3)]
+
+```
+
+### Subset to California cells 
+
+```{r}
+# ## determine which cells I actually need
+# precip_raster <- ppt[1] %>% pd_to_file %>% rast %>% terra::crop(extent(grid_ca)) %>% terra::mask(california)
+# precip_match <- grid_ca %>% rast %>% 
+#   project(precip_raster, method = 'near') %>%
+#   .[] %>% c %>% 
+#   cbind(precip_raster %>% terra::xyFromCell(1:ncell(.))) %>% 
+#   data.frame %>% setNames(c('grid_merra', 'x', 'y')) %>% 
+#   mutate(
+#     value_ppt = c(precip_raster[]),
+#     grid_ppt = 1:nrow(.), 
+#     grid_merra = ifelse(is.nan(grid_merra), NA, grid_merra)) %>% 
+#   mutate(
+#     grid_ppt = ifelse(is.na(value_ppt), NA, grid_ppt),
+#     valid = !is.na(grid_merra) & !is.na(grid_ppt)) %>% 
+#   select(-value_ppt)
+# # ggplot(precip_match) + geom_raster(aes(x=x, y=y, fill=valid)) + geom_sf(data = cal, fill = NA)
+# precip_valid <- precip_match$valid
+
+```
+
+### Extract precipitation values
+
+```{r}
+# # takes about five minutes to run locally (parallelizing takes longer)
+# if (progress) pb <- txtProgressBar(min = 0, max = length(ppt), style = 3)
+# df.precip <- 
+#   foreach (d = 1:length(ppt), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,d)
+#     ppt[d] %>% 
+#       pd_to_file %>% rast %>% terra::crop(extent(grid_ca)) %>% 
+#       .[] %>% c %>% .[precip_valid]
+#   } %>% t
+# 
+# ## gut check
+# dim(df.precip)  
+# c(length(dates_precip), sum(precip_valid))
+
+```
+
+### Find AR days and sequence days
+
+```{r}
+# if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+# ar_binary <-
+#   foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,i)
+#     if (i %in% index_ca) {
+#       df_24hr[[i]] %>% 
+#         filter(date %in% dates_precip) %>% 
+#         select(ar)
+#     } else rep(NA,length(dates_precip))
+#   }  
+# seq_binary <-
+#   foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,i)
+#     if (i %in% index_ca) {
+#       df_24hr[[i]] %>% 
+#         filter(date %in% dates_precip) %>% 
+#         select(seq)
+#     } else rep(NA,length(dates_precip))
+#   }  
+
+```
+
+### Create precip.extreme dataframe
+ 
+```{r}
+# if (progress) pb <- txtProgressBar(min = 0, max = length(precip_valid), style = 3)
+# cl <- makeCluster(cores)
+# registerDoSNOW(cl)
+# precip.extreme <-
+#   foreach (
+#     j = 1:length(precip_valid),
+#     .options.snow = if (progress) opts,
+#     .packages = c('tidyverse'),
+#     .combine = 'rbind') %dopar% {
+#       if (precip_valid[j]) {
+#         temp <-
+#           data.frame(
+#             precip = unname(df.precip[,match(j,precip_match$grid_ppt[precip_valid])]),
+#             ar = ar_binary[,precip_match$grid_merra[j]],
+#             seq = seq_binary[,precip_match$grid_merra[j]]) %>%
+#           count(ar, seq, precip.extreme = precip > quantile(precip, 0.95, na.rm = TRUE)) %>%
+#           group_by(ar, seq) %>%
+#           mutate(p.all = sum(n)) %>%
+#           ungroup %>%
+#           mutate(p.all = p.all/sum(p.all)*2) %>%
+#           filter(precip.extreme) %>%
+#           mutate(p.precip = n/sum(n))
+#         c(temp %>% filter(ar) %>% summarize(across(starts_with('p.'), sum)) %>% unlist,
+#           temp %>% filter(seq) %>% summarize(across(starts_with('p.'), sum)) %>% unlist) %>%
+#           setNames(c('ar.all', 'ar.precip', 'seq.all', 'seq.precip'))
+#       } else rep(NA,4)
+#     }
+# stopCluster(cl)
+
+# ## save out
+# save(
+#   dates_precip, precip_match, df.precip, precip.extreme,
+#   file = '_data/ARTMIP/ppt_0905.Rdata')
+
+```
+
+## Load from checkpoint
+
+```{r}
+## load from checkpoint
+load('_data/ARTMIP/ppt_0905.Rdata')
+
+```
+
+## Plot results
+
+```{r}
+g.precip <- precip_match %>% 
+  cbind(precip.extreme) %>% filter(valid) %>% 
+  select(x, y, starts_with('ar'), starts_with('seq')) %>%
+  pivot_longer(c(-x,-y)) %>% 
+  separate(name, into = c('arseq', 'extreme'), sep = '\\.') %>% 
+  filter(extreme == 'precip') %>%
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = california, fill = NA, size = 0.2) + 
+  facet_grid(arseq ~ extreme) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
+    limits = c(0,1), labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+# g.precip
+
+```
+
+# Runoff
+
+## Load data
+
+```{r}
+load('_data/streamflow/_checkpoints/huc_runoff_0928.Rdata')
+df.runoff <- huc_runoff %>% 
+  select(date, huc8, runoff) %>% 
+  pivot_wider(id_cols = 'date', names_from = 'huc8', values_from = 'runoff') %>% 
+  filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1980:2021) %>% 
+  select(-date)
+
+huc8 <- st_read('_data/WBD/WBDHU8.shp', quiet = TRUE)
+
+```
+
+## Find AR days and sequence days
+
+```{r}
+if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+datelength <- length(dates_merra[month(dates_merra) %in% c(10:12,1:3) & year(dates_merra) %in% 1980:2021])
+
+ar_binary <-
+  foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (i %in% index_ca) {
+      df_24hr[[i]] %>% 
+        filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1980:2021) %>% 
+        select(ar)
+    } else rep(NA, datelength)
+  }  
+seq_binary <-
+  foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (i %in% index_ca) {
+      df_24hr[[i]] %>% 
+        filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1980:2021) %>% 
+        select(seq)
+    } else rep(NA, datelength)
+  }
+
+```
+
+## Match HUC8 subbasins to MERRA-2 cells
+
+```{r}
+huc_intersects <- huc8 %>% 
+  st_intersects(grid_ca %>% rasterToPolygons %>% st_as_sf %>% st_transform(st_crs(huc8)))
+# ggplot() + 
+#   geom_tile(data = raster.df(grid_ca) %>% filter(!is.na(value)), aes(x=x, y=y), fill = NA, color = 'blue') + 
+#   geom_sf(data = huc8, fill = NA, color = 'darkred')
+
+```
+
+## Create runoff.extreme dataframe
+
+```{r}
+if (progress) pb <- txtProgressBar(min = 0, max = nrow(huc8), style = 3)
+runoff.extreme <- 
+  foreach (h = 1:nrow(huc8), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,h)
+    if (length(huc_intersects[h][[1]]) == 0) {
+      return(rep(NA,4))
+    } else if (length(huc_intersects[h][[1]]) == 1) {
+      temp <- 
+        data.frame(
+          runoff = unlist(df.runoff[,names(df.runoff) == huc8$huc8[h]]),
+          ar = ar_binary[,index_ca[huc_intersects[h][[1]]]],
+          seq = seq_binary[,index_ca[huc_intersects[h][[1]]]])
+    } else {
+      temp <- 
+        data.frame(
+          runoff = unlist(df.runoff[,names(df.runoff) == huc8$huc8[h]]),
+          ar = ar_binary[,index_ca[huc_intersects[h][[1]]]] %>% apply(1, function(x) mean(x)>0.1),
+          seq = seq_binary[,index_ca[huc_intersects[h][[1]]]] %>% apply(1, function(x) mean(x)>0.1))
+    }
+    temp <- temp %>% 
+      count(ar, seq, runoff.extreme = runoff > quantile(runoff, 0.95, na.rm = TRUE)) %>% 
+      group_by(ar, seq) %>%
+      mutate(p.all = sum(n)) %>% 
+      ungroup %>% 
+      mutate(p.all = p.all/sum(p.all)*2) %>% 
+      filter(runoff.extreme) %>% 
+      mutate(p.runoff = n/sum(n))
+    c(temp %>% filter(ar) %>% summarize(across(starts_with('p.'), sum)) %>% unlist,
+      temp %>% filter(seq) %>% summarize(across(starts_with('p.'), sum)) %>% unlist) %>% 
+      setNames(c('ar.all', 'ar.runoff', 'seq.all', 'seq.runoff'))
+  }
+
+```
+
+## Plot results
+
+```{r}
+huc8.plot <- huc8 %>% 
+  select(huc8) %>% 
+  cbind(runoff.extreme) %>% 
+  pivot_longer(c(-huc8,-geometry)) %>% 
+  separate(name, into = c('arseq', 'extreme'), sep = '\\.') %>% 
+  filter(!is.na(value))
+huc8.union <- st_union(huc8.plot)
+
+```
+
+```{r}
+g.runoff <- huc8.plot %>% 
+  filter(extreme == 'runoff') %>% 
+  ggplot() +
+  geom_sf(aes(fill = value), size = 0.2) + 
+  geom_sf(data = cal, fill = NA, color = 'grey70', size = 0.2) + 
+  geom_sf(data = huc8.union, fill = NA, size = 0.2) + 
+  facet_grid(arseq ~ extreme) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
+    limits = c(0,1), labels = percent) + 
+  coord_sf(xlim = layer_scales(g.precip)$x$range$range, ylim = layer_scales(g.precip)$y$range$range) +
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+# g.runoff
+
+```
+
+# Soil moisture
+
+## Create dataframe
+
+### Load file names
+
+```{r}
+# sm_filelist <- list.files('_data/WLDAS/files', full.names = TRUE)
+# sm_datelist <- str_sub(sm_filelist, start = 28, end = -13) %>% ymd
+# 
+# sm_filelist <- sm_filelist[month(sm_datelist) %in% c(10:12,1:3) & year(sm_datelist) %in% 1981:2021]
+# sm_datelist <- sm_datelist[month(sm_datelist) %in% c(10:12,1:3) & year(sm_datelist) %in% 1981:2021]
+
+```
+
+### Subset to California
+
+```{r}
+# sm_raster <- sm_filelist[1] %>% rast %>% terra::crop(extent(grid_ca)) %>% terra::mask(california)
+# sm_match <- grid_ca %>% rast %>% 
+#   project(sm_raster, method = 'near') %>%
+#   .[] %>% c %>% 
+#   cbind(sm_raster %>% terra::xyFromCell(1:ncell(.))) %>% 
+#   data.frame %>% setNames(c('grid_merra', 'x', 'y')) %>% 
+#   mutate(
+#     value_sm = c(sm_raster[]),
+#     grid_sm = 1:nrow(.), 
+#     grid_merra = ifelse(is.nan(grid_merra), NA, grid_merra)) %>% 
+#   mutate(
+#     grid_sm = ifelse(is.na(value_sm), NA, grid_sm),
+#     valid = !is.na(grid_merra) & !is.na(grid_sm)) %>% 
+#   select(-value_sm)
+# sm_valid <- sm_match$valid
+
+```
+
+### Extract soil moisture values
+
+```{r}
+# if (progress) pb <- txtProgressBar(min = 0, max = length(sm_filelist), style = 3)
+# df.sm <- 
+#   foreach (d = 1:length(sm_filelist), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,d)
+#     sm_filelist[d] %>% rast %>% terra::crop(extent(grid_ca)) %>% 
+#       .[] %>% c %>% .[sm_valid]
+#   } %>% t
+# 
+# ## gut check
+# dim(df.sm)  
+# c(length(sm_datelist), sum(sm_valid))
+
+```
+
+### Find AR days and sequence days
+
+```{r}
+# if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+# ar_binary <-
+#   foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,i)
+#     if (i %in% index_ca) {
+#       df_24hr[[i]] %>% 
+#         filter(date %in% sm_datelist) %>% 
+#         select(ar)
+#     } else rep(NA, length(sm_datelist))
+#   }  
+# seq_binary <-
+#   foreach (i = 1:ncell(grid_ca), .combine = 'cbind') %do% {
+#     if (progress) setTxtProgressBar(pb,i)
+#     if (i %in% index_ca) {
+#       df_24hr[[i]] %>% 
+#         filter(date %in% sm_datelist) %>% 
+#         select(seq)
+#     } else rep(NA, length(sm_datelist))
+#   }
+
+```
+
+### Create sm.extreme dataframe
+ 
+```{r}
+# if (progress) pb <- txtProgressBar(min = 0, max = length(sm_valid), style = 3)
+# cl <- makeCluster(cores)
+# registerDoSNOW(cl)
+# sm.extreme <- 
+#   foreach (
+#     k = 1:length(sm_valid), 
+#     .options.snow = if (progress) opts,
+#     .packages = c('tidyverse'),
+#     .combine = 'rbind') %dopar% {
+#       if (sm_valid[k]) {
+#         temp <- 
+#           data.frame(
+#             sm = unname(df.sm[,match(k,sm_match$grid_sm[sm_valid])]),
+#             ar = ar_binary[,sm_match$grid_merra[k]],
+#             seq = seq_binary[,sm_match$grid_merra[k]]) %>% 
+#           count(ar, seq, sm.extreme = sm > quantile(sm, 0.95, na.rm = TRUE)) %>% 
+#           group_by(ar, seq) %>%
+#           mutate(p.all = sum(n)) %>% 
+#           ungroup %>% 
+#           mutate(p.all = p.all/sum(p.all)*2) %>% 
+#           filter(sm.extreme) %>% 
+#           mutate(p.sm = n/sum(n))
+#         c(temp %>% filter(ar) %>% summarize(across(starts_with('p.'), sum)) %>% unlist,
+#           temp %>% filter(seq) %>% summarize(across(starts_with('p.'), sum)) %>% unlist) %>% 
+#           setNames(c('ar.all', 'ar.sm', 'seq.all', 'seq.sm'))
+#       } else rep(NA,4)
+#     }
+# stopCluster(cl)
+
+# ## save out
+# save(
+#   sm_filelist, sm_datelist, sm_match, df.sm, sm.extreme,
+#   file = '_data/ARTMIP/sm_0905.Rdata')
+
+```
+
+## Load from checkpoint
+
+```{r}
+load('_data/ARTMIP/sm_0905.Rdata')
+
+```
+
+## Plot results
+
+```{r}
+g.sm <- sm_match %>% 
+  cbind(sm.extreme) %>% filter(valid) %>% 
+  select(x, y, starts_with('ar'), starts_with('seq')) %>%
+  pivot_longer(c(-x,-y)) %>% 
+  separate(name, into = c('arseq', 'extreme'), sep = '\\.') %>% 
+  filter(extreme == 'sm') %>% 
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  geom_sf(data = california, fill = NA, size = 0.2) + 
+  facet_grid(arseq ~ extreme) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
+    limits = c(0,1), labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+# g.sm
+
+```
+
+# FIG 2: Hydrologic impacts of sequences
+
+## Plot all AR & sequence days
+
+```{r}
+if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+arseq <- 
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb,i)
+    if (i %in% index_ca) {
+      c('ar.all' = df_24hr[[i]] %>% 
+          filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1981:2021) %>% 
+          count(ar) %>% mutate(pct = n/sum(n)) %>% filter(ar) %>% pull(pct),
+        'seq.all' = df_24hr[[i]] %>% 
+          filter(month(date) %in% c(10:12,1:3) & year(date) %in% 1981:2021) %>% 
+          count(seq) %>% mutate(pct = n/sum(n)) %>% filter(seq) %>% pull(pct))
+    } else rep(NA,2)
+  }
+```
+
+## Combine all plots into full figure
+Note: Additional labels were added to this figure in Inkscape.
+
+```{r}
+g.all <- raster.df(grid_ca) %>% cbind(arseq) %>% 
+  filter(!is.na(value)) %>% select(-value) %>% 
+  pivot_longer(ends_with('all'), names_to = 'arseq') %>% 
+  mutate(empty = NA) %>% 
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = value)) + 
+  facet_grid(arseq ~ empty) +
+  geom_sf(data = california, fill = NA, size = 0.2) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'lapaz', direction = -1, 
+    limits = c(0,1), labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+
+```
+
+```{r}
+g.all + g.precip + g.runoff + g.sm + guide_area() + 
+  plot_layout(design = 'abcd\neeee', heights = c(10,1), guides = 'collect')
+ggsave('_figures/fig2_new.png', width = 5.5, height = 3.5, units = 'in', dpi = 300)
+
+```
+
+# Numerical results
+
+## AR days & sequence days
+
+Statewide wet-season AR day percentage:
+
+```{r}
+pct_ar <- arseq %>% data.frame %>% pull(ar.all)
+
+## print mean & standard deviation
+cat(paste0(
+  'Distribution Mean: ', 
+  Mean(pct_ar*100) %>% round(1), '%\n'))
+cat(paste0(
+  'Distribution Standard Deviation: ', 
+  sd(pct_ar*100, na.rm = TRUE) %>% round(1), '%'))
+
+```
+
+<br>
+Statewide wet-season sequence day percentage:
+
+```{r warning = FALSE}
+pct_seq <- arseq %>% data.frame %>% pull(seq.all)
+
+## print mean & standard deviation
+cat(paste0(
+  'Distribution Mean: ', 
+  Mean(pct_seq*100) %>% round(1), '%\n'))
+cat(paste0(
+  'Distribution Standard Deviation: ', 
+  sd(pct_seq*100, na.rm = TRUE) %>% round(1), '%'))
+
+```
+
+<br>
+How many days are AR days and sequence days in the North Coast? 
+
+```{r}
+temp <- 
+  grid_ca %>% raster.df %>% 
+  cbind(arseq) %>% select(-value) %>% 
+  rasterFromXYZ(crs = crs(grid_ca)) %>% 
+  raster::extract(huc4 %>% st_transform(crs(grid_ca)), fun = mean, na.rm = TRUE) %>% 
+  cbind(huc4 %>% st_drop_geometry %>% select(huc4, name))
+
+cat('Maximum percentage of AR days and sequence days: \n')
+temp %>% 
+  filter(ar.all == max(ar.all) | seq.all == max(seq.all)) %>% 
+  transmute(Name = name, AR.pct = percent(ar.all), seq.pct = percent(seq.all))
+cat('\n')
+
+cat('Minimum percentage of AR days and sequence days: \n')
+temp %>% 
+  filter(ar.all == min(ar.all) | seq.all == min(seq.all)) %>% 
+  transmute(Name = name, AR.pct = percent(ar.all), seq.pct = percent(seq.all))
+
+```
+
+## Extreme precipitation
+
+<br>
+Summary of extreme precipitation days:
+
+```{r}
+temp <- 
+  precip_match %>% cbind(precip.extreme) %>% 
+  select(x, y, ar.precip, seq.precip) %>% 
+  rasterFromXYZ(crs = crs(grid_ca)) %>% 
+  raster::extract(huc4 %>% st_transform(crs(grid_ca)), fun = mean, na.rm = TRUE) %>% 
+  cbind(huc4 %>% st_drop_geometry %>% select(huc4, name))
+
+temp %>% 
+  mutate(diff = ar.precip - seq.precip) %>% 
+  gt %>% 
+  tab_header('Percentage of Extreme Precipitation Days') %>% 
+  fmt_percent(c(ar.precip, seq.precip, diff), decimals = 1) %>% 
+  cols_label(
+    huc4 = 'Hydrologic Region',
+    name = 'Name', 
+    ar.precip = 'AR Days',
+    seq.precip = 'Sequence Days',
+    diff = 'Difference') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+# lab <- glue("{temp$name}: {percent(temp$ar.precip)}")
+# mapview(cbind(huc4, temp), zcol = 'ar.precip', label = lab)
+# 
+# lab <- glue("{temp$name}: {percent(temp$seq.precip)}")
+# mapview(cbind(huc4, temp), zcol = 'seq.precip', label = lab)
+
+```
+
+```{r eval = FALSE, include = FALSE}
+## difference
+precip_match %>% 
+  cbind(precip.extreme) %>% filter(valid) %>% 
+  select(x, y, starts_with('ar'), starts_with('seq')) %>%
+  transmute(x, y, diff = ar.precip - seq.precip) %>% 
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = diff)) + 
+  geom_sf(data = california, fill = NA, size = 0.2) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'vik', midpoint = 0, labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+
+```
+
+## Extreme runoff
+
+<br>
+Summary of extreme runoff days:
+
+```{r}
+temp <- 
+  huc8 %>% cbind(runoff.extreme) %>% 
+  st_drop_geometry %>% 
+  select(huc8, ar.runoff, seq.runoff) %>% 
+  group_by(huc4 = toNumber(str_sub(huc8, end = 4))) %>% 
+  summarize(across(-huc8, Mean)) %>% 
+  left_join(huc4 %>% st_drop_geometry %>% select(huc4, name), by = 'huc4')
+
+temp %>% 
+  mutate(diff = ar.runoff - seq.runoff) %>%
+  gt %>% 
+  tab_header('Percentage of Extreme Runoff Days') %>% 
+  fmt_percent(c(ar.runoff, seq.runoff, diff), decimals = 1) %>% 
+  cols_label(
+    huc4 = 'Hydrologic Region',
+    name = 'Name', 
+    ar.runoff = 'AR Days',
+    seq.runoff = 'Sequence Days',
+    diff = 'Difference') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+# lab <- glue("{temp$name}: {percent(temp$ar.runoff)}")
+# mapview(cbind(huc4, temp), zcol = 'ar.runoff', label = lab)
+# 
+# lab <- glue("{temp$name}: {percent(temp$seq.runoff)}")
+# mapview(cbind(huc4, temp), zcol = 'seq.runoff', label = lab)
+
+```
+
+```{r eval = FALSE, include = FALSE}
+## difference
+huc8 %>% 
+  select(huc8) %>% 
+  cbind(runoff.extreme) %>% 
+  mutate(diff = ar.runoff - seq.runoff) %>% 
+  ggplot() +
+  geom_sf(aes(fill = diff), size = 0.2) + 
+  geom_sf(data = cal, fill = NA, color = 'grey70', size = 0.2) + 
+  geom_sf(data = huc8.union, fill = NA, size = 0.2) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'vik', midpoint = 0, labels = percent) + 
+  coord_sf(xlim = layer_scales(g.precip)$x$range$range, ylim = layer_scales(g.precip)$y$range$range) +
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+
+```
+
+## Extreme soil moisture
+
+<br>
+Summary of extreme soil moisture days:
+
+```{r}
+temp <- 
+  sm_match %>% cbind(sm.extreme) %>% 
+  select(x, y, ar.sm, seq.sm) %>% 
+  rasterFromXYZ(crs = crs(grid_ca)) %>% 
+  raster::extract(huc4 %>% st_transform(crs(grid_ca)), fun = mean, na.rm = TRUE) %>% 
+  cbind(huc4 %>% st_drop_geometry %>% select(huc4, name))
+
+temp %>% 
+  mutate(diff = ar.sm - seq.sm) %>% 
+  gt %>% 
+  tab_header('Percentage of Extreme Soil Moisture Days') %>% 
+  fmt_percent(c(ar.sm, seq.sm, diff), decimals = 1) %>% 
+  cols_label(
+    huc4 = 'Hydrologic Region',
+    name = 'Name', 
+    ar.sm = 'AR Days',
+    seq.sm = 'Sequence Days',
+    diff = 'Difference') %>% 
+  tab_options(
+    heading.background.color = '#d9d9d9', 
+    column_labels.background.color = '#f2f2f2')
+
+# lab <- glue("{temp$name}: {percent(temp$ar.sm)}")
+# mapview(cbind(huc4, temp), zcol = 'ar.sm', label = lab)
+# 
+# lab <- glue("{temp$name}: {percent(temp$seq.sm)}")
+# mapview(cbind(huc4, temp), zcol = 'seq.sm', label = lab)
+
+```
+
+```{r eval = FALSE, include = FALSE}
+## difference
+sm_match %>% 
+  cbind(sm.extreme) %>% filter(valid) %>% 
+  select(x, y, starts_with('ar'), starts_with('seq')) %>%
+  transmute(x, y, diff = ar.sm - seq.sm) %>% 
+  ggplot() + 
+  geom_raster(aes(x=x, y=y, fill = diff)) + 
+  geom_sf(data = california, fill = NA, size = 0.2) + 
+  scale_fill_scico(
+    'Percentage of Days     ', palette = 'vik', midpoint = 0, labels = percent) + 
+  theme(
+    text = element_text(family = 'Segoe UI', size = 8),
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 90, vjust = 0.5),
+    axis.text.y = element_blank(), axis.line.y = element_blank(), axis.ticks.y = element_blank(),
+    strip.background.y = element_blank(), strip.text.y = element_blank(),
+    plot.background = element_rect(fill = 'white', color = NA),
+    strip.background.x = element_blank(), strip.text.x = element_blank(),
+    plot.margin = margin(5,2,5,2),
+    legend.position = 'bottom',
+    legend.key.width = unit(0.5, 'in'), 
+    legend.margin = margin(0,0,0,0))
+
+```
+

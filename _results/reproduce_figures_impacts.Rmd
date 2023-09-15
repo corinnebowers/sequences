@@ -1,6 +1,6 @@
 ---
-title: "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California"
-date: "2023-04-11"
+title: "Temporal Compounding Increases Economic Impacts of Atmospheric Rivers in California"
+date: "2023-09-15"
 author: Corinne Bowers
 output:
   html_document:
@@ -12,6 +12,9 @@ output:
     theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
     highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
 ---
+
+This markdown script reproduces the figures and numerical results associated with the paper "Temporal Compounding Increases Economic Impacts of Atmospheric Rivers in California" (doi:XX), published in Science Advances.
+Please note that the figures in the markdown file may not exactly match the published version because of formatting and scale differences.
 
 # Setup
 
@@ -33,7 +36,7 @@ source('_scripts/create_df_functions.R')
 boot <- 1000
 
 ## turn progress bars on/off
-progress <- TRUE
+progress <- FALSE
 if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 
 ## set random seed for reproducibility
@@ -147,13 +150,19 @@ catalog <- catalog.full %>%
   filter(wateryear(ar.start) %in% 1997:2021) %>%
   mutate(
     ncei_damage = setNA(ncei_damage,0), 
-    claims_value = setNA(claims_value,0),
-    ncei_nonzero = ncei_damage > 0,  # %%%%%%%%%%%%%%%%% should this be different?
-    nfip_nonzero = claims_value > 0) # %%%%%%%%%%%%%%%%% should this be different?
+    claims_value = setNA(claims_value,0)) 
 
 ```
 
-## Report class imbalance
+### Report catalog size
+
+```{r}
+cat('Number of AR events in the catalog: ')
+cat(comma(nrow(catalog)))
+
+```
+
+### Report class imbalance
 
 ```{r}
 cat('Percent of events with nonzero NCEI loss: ')
@@ -172,7 +181,7 @@ cat('\n')
 
 # Result #1: Temporal compounding and AR category
 
-## Figure 1
+## Figure 2
 Probability of another AR within ±5 days
 
 ```{r}
@@ -194,17 +203,6 @@ prox <-
   } %>% 
   left_join(raster.df(grid_ca), by = c('id' = 'value'))
 
-# ggplot(prox %>% filter(!is.na(or)) %>% mutate(p = add_index(nrow(.)))) + 
-#   geom_step(aes(x = sort(or), y = p)) + 
-#   geom_parity() + coord_fixed() + 
-#   scale_x_origin() + scale_y_origin() + 
-#   theme(panel.grid.major = element_line(size = 0.25))
-# ggplot(prox %>% filter(!is.na(and)) %>% mutate(p = add_index(nrow(.)))) + 
-#   geom_step(aes(x = sort(and), y = p)) + 
-#   geom_parity() + coord_fixed() + 
-#   scale_x_origin() + scale_y_origin() + 
-#   theme(panel.grid.major = element_line(size = 0.25))
-
 ```
 
 ```{r fig.width = 6, fig.height = 3.5}
@@ -214,9 +212,6 @@ g.or <- map(
     ggplot() + 
     geom_point(aes(x=x, y=y, color = or, size = n)) + 
     geom_sf(data = cal, fill = NA, color = 'black', size = 0.25) + 
-    # scale_color_scico(
-    #   'Percentage of\nAR Events',  labels = percent,
-    #   palette = 'lapaz', direction = -1, limits = c(0,1)) + 
     scale_color_distiller(
       'Percentage of\nAR Events',  labels = percent,
       palette = 'Purples', limits = c(0,1), direction = 1, na.value = NA) + 
@@ -231,8 +226,6 @@ g.or <- map(
       plot.margin = margin(0, 0, 0, 0, "pt"),
       axis.title = element_blank(), axis.text.x = element_blank(),
       legend.title = element_text(margin = margin(0,0,5,0))))
-      # legend.position = 'bottom', 
-      # legend.key.width = unit(0.75,'in')))
 g.or[[1]] <- g.or[[1]] + 
   facet_grid('Adjacent ARs' ~ 'AR1', switch = 'y')
 g.or[[2]] <- g.or[[2]] +
@@ -248,9 +241,6 @@ g.or[[5]] <- g.or[[5]] +
   facet_grid(.~paste0('AR', ar.cat)) + 
   theme(axis.text.y = element_blank())
 
-plot.or <- wrap_plots(g.or) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
-plot.or 
-
 ```
 
 ```{r fig.width = 6, fig.height = 3.5}
@@ -260,9 +250,6 @@ g.and <- map(
     ggplot() + 
     geom_point(aes(x=x, y=y, color = and, size = n)) + 
     geom_sf(data = cal, fill = NA, color = 'black', size = 0.25) + 
-    # scale_color_scico(
-    #   'Percentage of\nAR Events',  labels = percent,
-    #   palette = 'lapaz', direction = -1, end = 0.9) + 
     scale_color_distiller(
       'Percentage of\nAR Events',  labels = percent,
       palette = 'Blues', limits = c(0,0.5), direction = 1, na.value = 'darkblue') + 
@@ -277,37 +264,20 @@ g.and <- map(
       plot.margin = margin(0, 0, 0, 0, "pt"),
       axis.title = element_blank(),
       legend.title = element_text(margin = margin(0,0,5,0))))
-      # legend.position = 'bottom', 
-      # legend.key.width = unit(0.75,'in')))
-g.and[[1]] <- g.and[[1]] + 
-  facet_grid('Sandwiched ARs'~., switch = 'y')
-g.and[[2]] <- g.and[[2]] + 
-  # facet_grid(.~paste0('AR', ar.cat)) + 
-  theme(axis.text.y = element_blank())
-g.and[[3]] <- g.and[[3]] + 
-  # facet_grid(.~paste0('AR', ar.cat)) + 
-  theme(axis.text.y = element_blank())
-g.and[[4]] <- g.and[[4]] + 
-  # facet_grid(.~paste0('AR', ar.cat)) + 
-  theme(axis.text.y = element_blank())
-g.and[[5]] <- g.and[[5]] + 
-  # facet_grid(.~paste0('AR', ar.cat)) + 
-  theme(axis.text.y = element_blank())
-
-plot.and <- wrap_plots(g.and) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
-plot.and 
+g.and[[1]] <- g.and[[1]] + facet_grid('Sandwiched ARs'~., switch = 'y')
+g.and[[2]] <- g.and[[2]] + theme(axis.text.y = element_blank())
+g.and[[3]] <- g.and[[3]] + theme(axis.text.y = element_blank())
+g.and[[4]] <- g.and[[4]] + theme(axis.text.y = element_blank())
+g.and[[5]] <- g.and[[5]] + theme(axis.text.y = element_blank())
 
 ```
 
-```{r fig.width = 6, fig.height = 3.5}
-# g.list <- c(g.or, g.and)
-# wrap_plots(g.list) + guide_area() + 
-#   plot_layout(
-#     design = 'abcde\nfghij\nkkkkk', guides = 'collect', 
-#     heights = c(8,8,1))
+```{r fig.width = 7.25, fig.height = 3.25}
+plot.or <- wrap_plots(g.or) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
+plot.and <- wrap_plots(g.and) + guide_area() + plot_layout(design = 'abcdef', guides = 'collect')
 
 plot.or / plot.and
-ggsave('_figures-impacts/fig1_coincidence.png', width=7.25, height=3.25, units = 'in', dpi = 500)
+ggsave('_figures-impacts/fig2_coincidence.png', width=7.25, height=3.25, units = 'in', dpi = 500)
 
 ```
 
@@ -340,72 +310,18 @@ sandwich <- catalog.full %>%
 
 ```
 
-## Reviewer comments
-
-```{r}
-## what about timelines other than 5 days? 
-
-proxplus <-  
-  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %:% 
-  foreach (int = c(1,3,5,7,10), .combine = 'rbind') %do% {
-    if (progress) setTxtProgressBar(pb, i)
-    if (i %in% index_ca) {
-      df_3hr[[i]] %>% 
-        filter(wateryear(ts) %in% 1981:2021) %>% 
-        filter(ar.cat > 0) %>% 
-        group_by(ar.count) %>% 
-        summarize(ar.cat = ar.cat[1], before = prev.inter[1]<=int, after = next.inter[1]<=int) %>% 
-        group_by(ar.cat) %>% 
-        summarize(
-          n = length(ar.cat),
-          and = Sum(before & after)/n, or = Sum(before | after)/n) %>% 
-        mutate(id = i, int = int)    
-    }
-  } %>% 
-  left_join(raster.df(grid_ca), by = c('id' = 'value'))
-
-# ggplot(proxplus) + 
-#   geom_histogram(aes(x = or), bins = sqrt(nrow(proxplus)/5), color = NA, fill = 'grey20') + 
-#   facet_grid(int ~ ar.cat) + 
-#   scale_y_origin()
-```
-
-
-```{r}
-g1 <- ggplot(proxplus) + 
-  geom_vline(xintercept = factor(5, levels = c(1,3,5,7,10)), linetype = 'dashed', color = 'grey80') + 
-  geom_line(aes(y = or, x = factor(int), group = id), alpha = 0.2, size = 0.25) + 
-  facet_wrap(~paste0('AR',ar.cat), nrow = 1) + 
-  scale_y_origin(labels = percent) + 
-  labs(x = 'Between-Event Interval (Days)', y = 'Adjacent Probability') + 
-  theme(
-    strip.background = element_rect(color = NA, fill = 'grey95'),
-    strip.text = element_text(margin = margin(2,2,2,2)),
-    axis.title.x = element_blank(),
-    panel.grid.major.y = element_line(size = 0.25))
-g2 <- ggplot(proxplus) + 
-  geom_vline(xintercept = factor(5, levels = c(1,3,5,7,10)), linetype = 'dashed', color = 'grey80') + 
-  geom_line(aes(y = and, x = factor(int), group = id), alpha = 0.2, size = 0.25) + 
-  facet_wrap(~paste0('AR',ar.cat), nrow = 1) + 
-  scale_y_origin(labels = percent) + 
-  labs(x = 'Between-Event Interval (Days)', y = 'Sandwiched Probability') + 
-  coord_cartesian(ylim = c(0,0.6)) + 
-  theme(
-    strip.background = element_rect(color = NA, fill = 'grey95'),
-    strip.text = element_text(margin = margin(2,2,2,2)),
-    panel.grid.major.y = element_line(size = 0.25))
-g1 / g2
-ggsave('_figures-impacts/reviewer_figb.png', width = 7.25, height = 4, dpi = 500)
-
-```
-
-## Figure 2
+## Figure 3
 Relationship between primary event category and preceding event category
 
 ### Bootstrap confidence intervals for "All AR Events"
 
 ```{r}
 catalog5 <- catalog.full %>% filter(prev.inter <= 5)
+
+## Report number of events
+cat('Number of ARs within five days of another AR: ')
+cat(comma(nrow(catalog5)))
+
 ratios <- 
   map_dfr(
     .x = 1:boot, 
@@ -514,27 +430,10 @@ g.right <- catalog5 %>%
     panel.grid.major.y = element_line(size = 0.25))
 
 g3 <- g.right + 
-  # geom_text(
-  #   data = data.frame(ratio = ratios$med, color = factor(c(1:5), levels = 5:1)) %>% 
-  #     mutate(
-  #       placement = ratio - diff(c(0,ratio))/2,
-  #       label = c('AR1', 'AR2', NA, NA, NA)),
-  #   aes(x = 5.75, y = placement, label = label, color = color),
-  #   family = 'Segoe UI', size = 8/.pt, fontface = 'bold', show.legend = FALSE) +
   scale_y_continuous(labels = percent, expand = expansion(mult = 0)) + 
   labs(x = 'Primary Event Rank') + 
   coord_cartesian(xlim = c(0.65,5.15), ylim = c(0,0.85))
 g4 <- g.right + 
-  # geom_text(
-  #   data = data.frame(ratio = ratios$med, color = factor(c(1:5), levels = 5:1)) %>% 
-  #     mutate(placement = ratio - diff(c(0,ratio))/2),
-  #   aes(x = 5.75, y = placement+0.005, label = paste0('AR',color), color = color),
-  #   family = 'Segoe UI', size = 8/.pt, fontface = 'bold', show.legend = FALSE) +
-  # geom_text(
-  #   data = data.frame(ratio = ratios$med, color = factor(c(1:5), levels = 5:1)) %>% 
-  #     mutate(placement = ratio - diff(c(0,ratio))/2),
-  #   aes(x = 5.75, y = placement[3]+0.005, label = paste0('AR',color)[3]), color = '#bfd8b8',
-  #   family = 'Segoe UI', size = 8/.pt, fontface = 'bold') +
   coord_cartesian(xlim = c(0.65,5.15), ylim = c(0.85,1)) + 
   scale_y_continuous(labels = percent) + 
   theme(
@@ -543,13 +442,13 @@ g4 <- g.right +
 
 ```
 
-```{r fig.width = 6, fig.height = 4.5}
+```{r fig.width = 3.55, fig.height = 4.25}
 gg_axis <- 
   cowplot::get_plot_component(ggplot() + labs(y = '          Percent of Occurrences'), 'ylab-l')
 
 g2 + g1 + g4 + g3 + plot_spacer() + guide_area() + plot_spacer() + gg_axis + plot_spacer() +
   plot_layout(design = 'hiaec\nhibed\ngifff', widths = c(1,-10,26,-8,80), heights = c(5,8,1), guides = 'collect')
-ggsave('_figures-impacts/fig2_prevcat.png', width = 3.55, height = 4.25, units = 'in', dpi = 500)
+ggsave('_figures-impacts/fig3_prevcat.png', width = 3.55, height = 4.25, units = 'in', dpi = 500)
 
 ```
 
@@ -591,9 +490,13 @@ daily <-
   mutate(wy = wateryear(date)) %>% 
   filter(wy %in% 1997:2021)
 
+cat('Number of daily records: ')
+cat(comma(nrow(daily)))
+
 ```
 
 ## Report statistics
+
 ```{r}
 cat('Statewide average percent of days that are labeled impact days, 1996-2021:\n')
 daily %>% 
@@ -625,7 +528,7 @@ summary(f2, robust = TRUE)
 
 ```
 
-## Figure 3
+## Figure 4
 Impact day likelihood regression coefficients
 
 ```{r}
@@ -657,7 +560,7 @@ summary(f2, robust = TRUE) %>%
     legend.background = element_rect(fill = NA),
     panel.grid.major.x = element_line(size = 0.25)) + 
   coord_flip()
-ggsave('_figures-impacts/fig3_likelihood.png', width = 3.55, height = 2.5, dpi = 500)
+ggsave('_figures-impacts/fig4_likelihood.png', width = 3.55, height = 2.5, dpi = 500)
 
 # colorRampPalette(c('navy','white'))(9)
 
@@ -819,7 +722,7 @@ rbind(
 
 ```
 
-## Figure 4
+## Figure 5
 Effect of AR intensity category and sequences on loss
 
 ```{r fig.width=6, fig.height=3}
@@ -827,6 +730,7 @@ g1 <-
   rbind(
     df.ncei %>% filter(is.na(seq)) %>% mutate(data = 'NCEI'),
     df.nfip %>% filter(is.na(seq)) %>% mutate(data = 'NFIP')) %>% 
+  mutate(cat = toNumber(cat)) %>% 
   ggplot() + 
   geom_hline(yintercept = 1, color = 'grey50') + 
   geom_point(aes(x = cat, y = est, group = data, color = data, shape = data), size = 1.5) + 
@@ -875,7 +779,7 @@ g1 + g2 + plot_layout(nrow = 1, widths = c(2,1)) +
     text = element_text(family = 'Segoe UI', size = 9),
     plot.tag = element_text(family = 'Segoe UI', face = 'bold', size = 9),
     plot.tag.position = c(0.15,0.95))
-ggsave('_figures-impacts/fig4_magnitude.png', width = 7.25, height = 3.5, dpi = 500)
+ggsave('_figures-impacts/fig5_magnitude.png', width = 7.25, height = 3.5, dpi = 500)
 
 ```
 
@@ -1139,49 +1043,6 @@ cat('\n\n')
 
 ```
 
-### Reviewer comments
-
-```{r}
-## which ARs do not have a previous AR within 30 days? 
-
-catalog %>% 
-  ggplot() + 
-  geom_histogram(aes(x = prev.inter), bins = sqrt(nrow(catalog)), color = NA, fill = 'grey25') + 
-  scale_x_origin() + scale_y_origin()
-
-catalog %>% filter(prev.inter > 1e3)
-catalog %>% filter(id == 173)
-grid_ca %>% 
-  raster.df %>% 
-  ggplot() +
-  geom_raster(aes(x=x, y=y, fill = value==173)) + 
-  geom_sf(data = california, fill = NA)
-
-catalog %>% 
-  ggplot() + 
-  geom_bar(aes(
-    x = factor(month(ar.start), levels = c(10:12,1:9)), 
-    fill = cut(prev.inter, c(0,30,180,Inf)))) + 
-  scale_x_discrete(
-    labels = c('Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep')) + 
-  scale_y_origin('Number of Observations', labels = comma) + 
-  scale_fill_manual(
-    'Time Since\nPrevious Event',
-    values = c('grey90','grey60','grey30'), 
-    labels = c('<30 Days', '30-180 Days', '>180 Days')) + 
-  theme(
-    text = element_text(family = 'Segoe UI', size = 9),
-    axis.title.x = element_blank(), 
-    panel.grid.major.y = element_line(size = 0.25),
-    legend.position = c(0.8,0.8))
-ggsave('_figures-impacts/reviewer_figa.png', width = 3.55, height = 3)
-
-sum(catalog$prev.inter > 30) / nrow(catalog)
-sum(catalog$prev.inter > 180) / nrow(catalog)
-
-```
-
-
 ## Interactions between previous event characteristics
 
 ### Fit regression
@@ -1265,7 +1126,7 @@ cat('\n')
 
 ```
 
-## Figure 5
+## Figure 6
 Effect of previous AR characteristics on loss
 
 ```{r}
@@ -1349,104 +1210,7 @@ g1 + g2 + g3 +
   theme(
     plot.tag = element_text(family = 'Segoe UI', face = 'bold', size = 9),
     plot.tag.position = c(0.15, 1))
-ggsave('_figures-impacts/fig5_previous.png', width = 7.25, height = 5.75, dpi = 500)
-
-```
-
-## Reviewer comments
- 
-```{r}
-## combine previous category with primary category
-boot <- 100
-
-coef.ncei <- 
-  foreach (b = 1:boot) %do% {
-    index.sample <- c(index.ncei.nonzero, sample(
-      index.ncei.zero, size = 2*length(index.ncei.nonzero), replace = FALSE))
-    felm(
-      log10(ncei_damage+1) ~ factor(ar.cat) + factor(ar.cat):factor(prev.cat) | factor(id) + factor(wy),
-      data = catalog %>% 
-        mutate(
-          prev.cat = ifelse(prev.inter <= 5, prev.cat, 0),
-          prev.cat = ifelse(prev.cat==5, 4, prev.cat),
-          ar.cat = ifelse(ar.cat==5, 4, ar.cat)) %>% 
-        slice(index.sample), 
-      exactDOF = TRUE) %>% 
-      summary %>% coef
-  } %>% 
-  abind(along = 3) %>% apply(c(1,2),mean)
-coef.nfip <- 
-  foreach (b = 1:boot) %do% {
-    index.sample <- c(index.nfip.nonzero, sample(
-      index.nfip.zero, size = 2*length(index.nfip.nonzero), replace = FALSE))
-    felm(
-      log10(claims_value+1) ~ factor(ar.cat) + factor(ar.cat):factor(prev.cat) | factor(id) + factor(wy),
-      data = catalog %>% 
-        mutate(
-          prev.cat = ifelse(prev.inter <= 5, prev.cat, 0),
-          prev.cat = ifelse(prev.cat==5, 4, prev.cat),
-          ar.cat = ifelse(ar.cat==5, 4, ar.cat)) %>% 
-        slice(index.sample), 
-      exactDOF = TRUE) %>% 
-      summary %>% coef
-  } %>% 
-  abind(along = 3) %>% apply(c(1,2),mean)
-
-coef.new <- rbind(
-  coef.ncei %>% data.frame %>% rownames_to_column %>% 
-    slice(-(1:3)) %>%
-    transmute(
-      ar.cat = rep(1:4, 4),
-      prev.cat = rep(1:4, each = 4),
-      source = 'NCEI',
-      est = 10^Estimate, 
-      lower = 10^(Estimate-2*Std..Error), 
-      upper = 10^(Estimate+2*Std..Error)),
-  coef.nfip %>% data.frame %>% rownames_to_column %>% 
-    slice(-(1:3)) %>%
-    transmute(
-      ar.cat = rep(1:4, 4),
-      prev.cat = rep(1:4, each = 4),
-      source = 'NFIP',
-      est = 10^Estimate, 
-      lower = 10^(Estimate-2*Std..Error), 
-      upper = 10^(Estimate+2*Std..Error)))
-
-```
-
-```{r}
-coef.new %>% 
-  rbind(expand.grid(ar.cat = 1:4, prev.cat = 0, source = c('NCEI','NFIP'), est = 1, lower = 1, upper = 1)) %>% 
-  mutate(ar.cat = factor(ar.cat)) %>% 
-  ggplot() +
-  geom_hline(yintercept = 1, color = 'grey50') + 
-  geom_ribbon(aes(x = prev.cat, ymin = lower, ymax = upper, group = ar.cat, fill = ar.cat), alpha = 0.25) +
-  geom_point(aes(x = prev.cat, y = est, group = ar.cat, color = ar.cat, shape = ar.cat), size = 1.5) +
-  geom_line(aes(x = prev.cat, y = est, group = ar.cat, color = ar.cat), size = 0.75) +
-  scale_x_continuous(breaks = 0:4, labels = c('No Previous\nEvent', paste0('AR',c(1,2,3,'4-5')))) + 
-  scale_y_log10(labels = comma_format(suffix = 'x')) + logticks('l') + 
-  scale_color_manual(
-    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
-    values = roma.colors[c(5,4,2,1)]) +
-  scale_fill_manual(
-    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
-    values = roma.colors[c(5,4,2,1)]) +
-  scale_shape_manual(
-    'Primary Event Rank', labels = paste0('AR',c(1,2,3,'4-5')), 
-    values = c(15,17:19)) +
-  # scale_alpha_manual('', values = c(0.35, 0.25)) + 
-  facet_wrap(~source) + 
-  ggtitle(waiver(), subtitle = '') +
-  labs(x = 'Previous Event Rank', y = 'Primary Event Loss Multiplier') + 
-  theme(
-    text = element_text(family = 'Segoe UI', size = 9),
-    strip.background = element_rect(fill = 'grey95', color = NA),
-    strip.text = element_text(margin = margin(2,2,2,2)),
-    panel.grid.major.y = element_line(size = 0.25), 
-    panel.spacing = unit(0.2,'in'),
-    legend.key.width = unit(0.25, 'in'),
-    legend.position = 'bottom')
-ggsave('_figures-impacts/reviewer_figc.png', width = 6, height = 3.5)
+ggsave('_figures-impacts/fig6_previous.png', width = 7.25, height = 5.75, dpi = 500)
 
 ```
 
@@ -1468,6 +1232,10 @@ catalog <- catalog %>% mutate(seq.position = ifelse(seq.position>10, 10, seq.pos
 ## Report statistics
 
 ```{r}
+cat('Number of AR events within sequences: ')
+cat(comma(sum(catalog$seq)))
+cat('\n')
+
 cat('Percent of AR events within sequences: ')
 cat((sum(catalog$seq)/nrow(catalog)) %>% percent(accuracy = 0.1))
 cat('\n')
@@ -1547,7 +1315,7 @@ cat('\n')
 
 ```
 
-## Figure 6
+## Figure 7
 Effect of AR sequence position on loss
 
 ```{r fig.width=6, fig.height=4}
@@ -1602,13 +1370,13 @@ g1 + g2 + plot_layout(nrow = 2, heights = c(3,2)) +
   theme(
     plot.tag = element_text(family = 'Segoe UI', size = 9, face = 'bold'),
     plot.tag.position = c(0.075,1.075))
-ggsave('_figures-impacts/fig6_position.png', width = 7.25, height = 4, dpi = 500)
+ggsave('_figures-impacts/fig7_position.png', width = 7.25, height = 4, dpi = 500)
 
 ```
 
 ```{r}
 ## how many are there of each position? 
-
 catalog %>% filter(seq) %>% count(seq.position)
+
 ```
 

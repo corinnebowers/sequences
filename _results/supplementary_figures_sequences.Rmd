@@ -1,6 +1,7 @@
 ---
 title: "Supplementary Figures"
-date: "2023-01-24"
+subtitle: "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections"
+date: "2023-09-15"
 author: Corinne Bowers
 output:
   html_document:
@@ -13,14 +14,14 @@ output:
     highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
 ---
 
-This markdown script reproduces the supplementary figures associated with the paper ``XX''.
+This markdown script reproduces the supplementary figures associated with the paper "Atmospheric River Sequences as Indicators of Hydrologic Hazard in Historical Reanalysis and GFDL SPEAR Future Climate Projections" (https://doi.org/10.22541/essoar.167590838.86645781/v1).
 
 
 ```{r setup, include = FALSE}
-knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center', fig.width=6)
-# rm(list=ls())
+rm(list=ls())
 
 ```
 
@@ -60,7 +61,7 @@ Load MERRA-2 catalogs
 # load('_scripts/_checkpoints/df_3hr_1209.Rdata')
 
 ## MERRA 24-hour dataset
-load('_scripts/_checkpoints/df_24hr_1209.Rdata')
+load('_scripts/_checkpoints/df_24hr_0209.Rdata')
 
 ## MERRA metadata 
 ts_merra <- seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
@@ -133,11 +134,11 @@ ggplot(compare_biascorr) +
     strip.background = element_rect(fill = 'grey95', size = NA),
     strip.text = element_text(margin = margin(2,2,2,2)),
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggsave('_figures/s1_biascorr.png', width=6, height=3.75)
+ggsave('_figures/s1_biascorr.png', width = 6, height = 3.75, dpi = 600)
 
 ```
 
-# FIG S2-4: new
+# FIG S2: Comparison of MERRA-2 versus bias-corrected GFDL SPEAR annual average sequence day frequency
 
 ```{r}
 compare_freq <-
@@ -188,9 +189,11 @@ compare_freq %>%
     strip.background = element_rect(fill = 'grey95', size = NA),
     strip.text = element_text(margin = margin(2,2,2,2)),
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
- ggsave('_figures/s2_biascorr_freq.png', width = 6, height = 4.75)
+ ggsave('_figures/s2_biascorr_freq.png', width = 6, height = 4.75, dpi = 600)
 
 ```
+
+# FIG S3: Comparison of MERRA-2 versus bias-corrected GFDL SPEAR sequence maximum IVT
 
 ```{r}
 compare <-
@@ -250,8 +253,13 @@ compare %>%
     strip.text = element_text(margin = margin(2,2,2,2)),
     axis.line = element_blank(),
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggsave('_figures/s3_biascorr_maxivt.png', width = 6, height = 3.75)
+ggsave('_figures/s3_biascorr_maxivt.png', width = 6, height = 3.75, dpi = 600)
 
+```
+
+# FIG S4: Comparison of MERRA-2 versus bias-corrected GFDL SPEAR sequence duration
+
+```{r}
 compare %>% 
   group_by(ens,huc) %>% 
   arrange(duration) %>% 
@@ -283,18 +291,15 @@ compare %>%
     strip.text = element_text(margin = margin(2,2,2,2)),
     axis.line = element_blank(),
     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
-ggsave('_figures/s4_biascorr_duration.png', width = 6, height = 3.75)
+ggsave('_figures/s4_biascorr_duration.png', width = 6, height = 3.75, dpi = 600)
 
 ```
 
-# FIG S2: Sensitivity analysis results
+# FIG S5: Sensitivity analysis results
 
-## Perform sensitivity analysis
+## Create clustered parameters & outcomes
 
-### Create clustered parameters & outcomes
-
-<br>
-Generate LHS samples 
+### Generate LHS samples 
 
 ```{r eval = FALSE}
 ## define big table of samples
@@ -309,160 +314,159 @@ samples.dist <- samples.dist %>% rbind(c(window = 5, startend = 0.5, magcutoff =
 
 ```
 
-Generate output statistics for every LHS parameter combination 
-
+### Generate output statistics for every LHS parameter combination 
 (this takes a while $\to$ load from file)
 
 ```{r eval = FALSE}
-## define progress bar
-if (progress) pb <- txtProgressBar(min = 0, max = 10*nrow(samples.dist), style = 3)
+# ## define progress bar
+# if (progress) pb <- txtProgressBar(min = 0, max = 10*nrow(samples.dist), style = 3)
 
-## historical
-timer <- Sys.time()
-clust <- parallel::makeCluster(cores)
-registerDoSNOW(clust)
-sens_hist <- 
-  foreach(
-    huc = 1801:1810,
-    .options.snow = if (progress) opts,
-    .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
-    .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
-  foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
-    ## create sequence catalog
-    data <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
-      filter(wateryear(date) %in% 1981:2010) %>% 
-      transmute(date, ivt, ens)
-    sequences <-
-      map(.x = 1:5, .f = function(x) {
-        if (nrow(data %>% filter(ens==x)) > 0) {
-          calculate_sequences(
-            data %>% filter(ens==x), data %>% filter(ens==x), 
-            window = samples.dist$window[samp], 
-            startend = samples.dist$startend[samp], 
-            magcutoff = samples.dist$magcutoff[samp]) %>% 
-            mutate(ens=x)
-        }
-      }) %>% reduce(rbind)
-    ## calculate sequence statistics
-    sequences %>%
-      group_by(ens) %>% 
-        mutate(
-          nseq = length(ens),
-          freq = nseq/30) %>% 
-        ungroup %>% 
-        summarize(
-          maxivt.mean = mean(maxivt),
-          maxivt.q95 = quantile(maxivt,0.95),
-          duration.mean = mean(duration),
-          duration.q95 = quantile(duration,0.95),
-          nseq = nseq[1], freq = freq[1])
-  }
-stopCluster(clust)
-if (progress) cat('\n')
+# ## historical
+# timer <- Sys.time()
+# clust <- parallel::makeCluster(cores)
+# registerDoSNOW(clust)
+# sens_hist <- 
+#   foreach(
+#     huc = 1801:1810,
+#     .options.snow = if (progress) opts,
+#     .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
+#     .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
+#   foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
+#     ## create sequence catalog
+#     data <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
+#       filter(wateryear(date) %in% 1981:2010) %>% 
+#       transmute(date, ivt, ens)
+#     sequences <-
+#       map(.x = 1:5, .f = function(x) {
+#         if (nrow(data %>% filter(ens==x)) > 0) {
+#           calculate_sequences(
+#             data %>% filter(ens==x), data %>% filter(ens==x), 
+#             window = samples.dist$window[samp], 
+#             startend = samples.dist$startend[samp], 
+#             magcutoff = samples.dist$magcutoff[samp]) %>% 
+#             mutate(ens=x)
+#         }
+#       }) %>% reduce(rbind)
+#     ## calculate sequence statistics
+#     sequences %>%
+#       group_by(ens) %>% 
+#         mutate(
+#           nseq = length(ens),
+#           freq = nseq/30) %>% 
+#         ungroup %>% 
+#         summarize(
+#           maxivt.mean = mean(maxivt),
+#           maxivt.q95 = quantile(maxivt,0.95),
+#           duration.mean = mean(duration),
+#           duration.q95 = quantile(duration,0.95),
+#           nseq = nseq[1], freq = freq[1])
+#   }
+# stopCluster(clust)
+# if (progress) cat('\n')
 
-## SSP 2-4.5
-clust <- parallel::makeCluster(cores)
-registerDoSNOW(clust)
-sens_ssp245 <- 
-  foreach(
-    huc = 1801:1810,
-    .options.snow = if (progress) opts,
-    .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
-    .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
-  foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
-    ## create sequence catalog
-    data <- df_ssp245[[which(grid_hucrep[]==huc)]] %>% 
-      filter(wateryear(date) %in% 2061:2090) %>% 
-      transmute(date, ivt, ens)
-    data_hist <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
-      filter(wateryear(date) %in% 1981:2010) %>% 
-      transmute(date, ivt, ens)
-    sequences <-
-      map(.x = 1:5, .f = function(x) {
-        if (nrow(data %>% filter(ens==x)) > 0) {
-          calculate_sequences(
-            data %>% filter(ens==x), data_hist %>% filter(ens==x), 
-            window = samples.dist$window[samp], 
-            startend = samples.dist$startend[samp], 
-            magcutoff = samples.dist$magcutoff[samp]) %>% 
-            mutate(ens=x)
-        }
-      }) %>% reduce(rbind)
-    ## calculate sequence statistics
-    sequences %>%
-      group_by(ens) %>% 
-        mutate(
-          nseq = length(ens),
-          freq = nseq/30) %>% 
-        ungroup %>% 
-        summarize(
-          maxivt.mean = mean(maxivt),
-          maxivt.q95 = quantile(maxivt,0.95),
-          duration.mean = mean(duration),
-          duration.q95 = quantile(duration,0.95),
-          nseq = nseq[1], freq = freq[1])
-  }
-stopCluster(clust)
-if (progress) cat('\n')
+# ## SSP 2-4.5
+# clust <- parallel::makeCluster(cores)
+# registerDoSNOW(clust)
+# sens_ssp245 <- 
+#   foreach(
+#     huc = 1801:1810,
+#     .options.snow = if (progress) opts,
+#     .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
+#     .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
+#   foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
+#     ## create sequence catalog
+#     data <- df_ssp245[[which(grid_hucrep[]==huc)]] %>% 
+#       filter(wateryear(date) %in% 2061:2090) %>% 
+#       transmute(date, ivt, ens)
+#     data_hist <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
+#       filter(wateryear(date) %in% 1981:2010) %>% 
+#       transmute(date, ivt, ens)
+#     sequences <-
+#       map(.x = 1:5, .f = function(x) {
+#         if (nrow(data %>% filter(ens==x)) > 0) {
+#           calculate_sequences(
+#             data %>% filter(ens==x), data_hist %>% filter(ens==x), 
+#             window = samples.dist$window[samp], 
+#             startend = samples.dist$startend[samp], 
+#             magcutoff = samples.dist$magcutoff[samp]) %>% 
+#             mutate(ens=x)
+#         }
+#       }) %>% reduce(rbind)
+#     ## calculate sequence statistics
+#     sequences %>%
+#       group_by(ens) %>% 
+#         mutate(
+#           nseq = length(ens),
+#           freq = nseq/30) %>% 
+#         ungroup %>% 
+#         summarize(
+#           maxivt.mean = mean(maxivt),
+#           maxivt.q95 = quantile(maxivt,0.95),
+#           duration.mean = mean(duration),
+#           duration.q95 = quantile(duration,0.95),
+#           nseq = nseq[1], freq = freq[1])
+#   }
+# stopCluster(clust)
+# if (progress) cat('\n')
 
-## SSP 5-8.5
-clust <- parallel::makeCluster(cores)
-registerDoSNOW(clust)
-sens_ssp585 <- 
-  foreach(
-    huc = 1801:1810,
-    .options.snow = if (progress) opts,
-    .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
-    .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
-  foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
-    ## create sequence catalog
-    data <- df_ssp585[[which(grid_hucrep[]==huc)]] %>% 
-      filter(wateryear(date) %in% 2061:2090) %>% 
-      transmute(date, ivt, ens)
-    data_hist <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
-      filter(wateryear(date) %in% 1981:2010) %>% 
-      transmute(date, ivt, ens)
-    sequences <-
-      map(.x = 1:5, .f = function(x) {
-        if (nrow(data %>% filter(ens==x)) > 0) {
-          calculate_sequences(
-            data %>% filter(ens==x), data_hist %>% filter(ens==x), 
-            window = samples.dist$window[samp], 
-            startend = samples.dist$startend[samp], 
-            magcutoff = samples.dist$magcutoff[samp]) %>% 
-            mutate(ens=x)
-        }
-      }) %>% reduce(rbind)
-    ## calculate sequence statistics
-    sequences %>%
-      group_by(ens) %>% 
-        mutate(
-          nseq = length(ens),
-          freq = nseq/30) %>% 
-        ungroup %>% 
-        summarize(
-          maxivt.mean = mean(maxivt),
-          maxivt.q95 = quantile(maxivt,0.95),
-          duration.mean = mean(duration),
-          duration.q95 = quantile(duration,0.95),
-          nseq = nseq[1], freq = freq[1])
-  }
-stopCluster(clust)
-if (progress) cat('\n')
-Sys.time() - timer
+# ## SSP 5-8.5
+# clust <- parallel::makeCluster(cores)
+# registerDoSNOW(clust)
+# sens_ssp585 <- 
+#   foreach(
+#     huc = 1801:1810,
+#     .options.snow = if (progress) opts,
+#     .packages = c('raster', 'lubridate', 'foreach', 'tidyverse'),
+#     .export = c('Mean', 'lag', 'add_counter', 'create_catalog')) %:%
+#   foreach(samp = 1:nrow(samples.dist), .combine = 'rbind') %dopar% { 
+#     ## create sequence catalog
+#     data <- df_ssp585[[which(grid_hucrep[]==huc)]] %>% 
+#       filter(wateryear(date) %in% 2061:2090) %>% 
+#       transmute(date, ivt, ens)
+#     data_hist <- df_hist[[which(grid_hucrep[]==huc)]] %>% 
+#       filter(wateryear(date) %in% 1981:2010) %>% 
+#       transmute(date, ivt, ens)
+#     sequences <-
+#       map(.x = 1:5, .f = function(x) {
+#         if (nrow(data %>% filter(ens==x)) > 0) {
+#           calculate_sequences(
+#             data %>% filter(ens==x), data_hist %>% filter(ens==x), 
+#             window = samples.dist$window[samp], 
+#             startend = samples.dist$startend[samp], 
+#             magcutoff = samples.dist$magcutoff[samp]) %>% 
+#             mutate(ens=x)
+#         }
+#       }) %>% reduce(rbind)
+#     ## calculate sequence statistics
+#     sequences %>%
+#       group_by(ens) %>% 
+#         mutate(
+#           nseq = length(ens),
+#           freq = nseq/30) %>% 
+#         ungroup %>% 
+#         summarize(
+#           maxivt.mean = mean(maxivt),
+#           maxivt.q95 = quantile(maxivt,0.95),
+#           duration.mean = mean(duration),
+#           duration.q95 = quantile(duration,0.95),
+#           nseq = nseq[1], freq = freq[1])
+#   }
+# stopCluster(clust)
+# if (progress) cat('\n')
+# Sys.time() - timer
 
-## save checkpoint
-save(samples.dist, sens_hist, sens_ssp245, sens_ssp585, file = '_results/sensitivity_checkpoint.Rdata')
+# ## save checkpoint
+# save(samples.dist, sens_hist, sens_ssp245, sens_ssp585, file = '_results/sensitivity_checkpoint.Rdata')
 
 ```
 
 ```{r}
 ## load checkpoint from file
-load('_results/sensitivity_checkpoint.Rdata')
+load('_results/_checkpoints/sensitivity_checkpoint.Rdata')
 
 ```
 
-Combine outcomes into dataframes 
+### Combine outcomes into dataframes 
 
 ```{r}
 sens_hist <- 
@@ -499,7 +503,7 @@ sens_change_relative <-
 
 ```
 
-Create clusters
+### Create clusters
 
 ```{r}
 ## decide on an appropriate number of clusters
@@ -550,9 +554,9 @@ sens_change_relative <-
 
 ```
 
-### Perform response sensitivity analysis (RSA)
+## Perform response sensitivity analysis (RSA)
 
-Define L1 bootstrap function
+### Define L1 bootstrap function
 
 ```{r}
 ## bootstrap L1-norm distribution
@@ -581,9 +585,10 @@ L1_boot <- function(data, cl, var, boot = 1e3) {
 
 ```
 
-Calculate bootstrapped likelihood of L1 distance
+### Calculate bootstrapped likelihood of L1 distance
 
-  Frequency:
+<br>
+Frequency:
 
 ```{r}
 if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
@@ -637,7 +642,8 @@ stopCluster(clust)
 
 ```
 
-  Intensity:
+<br>
+Intensity:
     
 ```{r}
 if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
@@ -691,7 +697,8 @@ stopCluster(clust)
 
 ```
 
-  Duration:
+<br>
+Duration:
     
 ```{r}
 if (progress) pb <- txtProgressBar(min = 0, max = 30*k, style = 3)
@@ -748,9 +755,10 @@ stopCluster(clust)
 
 ## Create sensitivity analysis plot
 
-Create plot panels by row
+### Create plot panels by row
 
-  Frequency:
+<br>
+Frequency:
   
 ```{r}
 g1.freq <- ggplot(sens) + 
@@ -886,7 +894,8 @@ g2.rsa <- rsa_freq_rel %>%
 
 ```
 
-  Intensity:
+<br>
+Intensity:
   
 ```{r}
 g1.maxivt <- ggplot(sens) + 
@@ -1012,7 +1021,8 @@ g4.rsa <- rsa_maxivt_rel %>%
 
 ```
 
-  Duration:
+<br>
+Duration:
 
 ```{r}
 g1.duration <- ggplot(sens) + 
@@ -1136,7 +1146,7 @@ g6.rsa <- rsa_duration_rel %>%
 
 ```
 
-Combine plot panels into a single figure
+### Combine plot panels into a single figure
 
 Note: Additional labels were added to this figure in Inkscape.
 
@@ -1152,7 +1162,7 @@ ggplot(sens) +
     legend.text = element_text(margin = margin(-2,-2,-2,-2)),
     legend.margin = margin(-2,-2,-2,-2), 
     legend.box.margin = margin(-2,-2,-2,-2))
-ggsave('_figures/s2_legend.png', width = 5.5, height = 1, units = 'in')
+ggsave('_figures/s5_legend.png', width = 5.5, height = 1, dpi = 600)
 
 g1.freq + g4.freq + g7.freq + g1.rsa + theme(axis.text.x = element_blank()) + 
   g3.freq + g6.freq + g9.freq + g2.rsa + theme(axis.text.x = element_blank()) + 
@@ -1165,11 +1175,11 @@ g1.freq + g4.freq + g7.freq + g1.rsa + theme(axis.text.x = element_blank()) +
   plot_annotation(tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') &
   theme(plot.tag = element_text(
     family = 'Segoe UI', size = 10, face = 'bold', margin = margin(-2,0,-2,-10)))
-ggsave('_figures/s2.png', width = 5.5, height = 7.75, units = 'in')
+ggsave('_figures/s5.png', width = 5.5, height = 7.75, dpi = 600)
 
 ```
 
-# FIG S3: Additive decadal change in number of sequence days
+# FIG S6: Additive decadal change in number of sequence days
 
 ```{r}
 ndays_ref <- 
@@ -1314,11 +1324,11 @@ gmap <- ggplot(huc4) +
     legend.margin = margin(c(0,0,0,0)))
 
 gdays + get_legend(gmap) + plot_layout(heights = c(10,1))
-ggsave('_figures/s3_sequencedays.png', width=6, height=4.5, units = 'in')
+ggsave('_figures/s6_sequencedays.png', width = 6, height = 4.5, dpi = 600)
 
 ```
 
-# FIG S4: Sequence intensity boxplots
+# FIG S7: Sequence intensity boxplots
 
 ```{r}
 stats_all <- 
@@ -1360,17 +1370,51 @@ stats_all <- stats_all %>%
 ```
 
 ```{r}
-ggplot(stats_all) + 
-  stat_boxplot_custom(
-    aes(x = maxivt, y = source_name, group = paste(source,ens), fill = source),
-    qs = c(.05, .25, .5, .75, .95),
-    outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.5,
-    show.legend = FALSE) + 
+  
+```
+
+```{r}
+ggplot() + 
+  # stat_boxplot_custom(
+  #   aes(x = maxivt, y = source_name, group = paste(source,ens), fill = source),
+  #   qs = c(.05, .25, .5, .75, .95),
+  #   outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.5,
+  #   show.legend = FALSE) + 
+  geom_boxplot(
+    data = stats_all %>%
+      mutate(source_name = factor(source_name, levels = c('SSP 5-8.5','SSP 2-4.5','Historic'))) %>% 
+      group_by(source_name,source,ens,huc4) %>%
+      summarize(
+        y05 = quantile(maxivt,0.05),
+        y25 = quantile(maxivt,0.25),
+        y50 = quantile(maxivt,0.50),
+        y75 = quantile(maxivt,0.75),
+        y95 = quantile(maxivt,0.95)),
+    aes(
+      xmin = y05, xlower = y25, xmiddle = y50, xupper = y75, xmax = y95,
+      y = source_name, group = paste(source_name,ens), fill = source_name),
+    stat = 'identity', position = 'dodge',
+    width = 0.8, size = 0.25, alpha = 0.5, show.legend = FALSE) +
+  geom_point(
+    data = stats_all %>% 
+      mutate(source_name = factor(source_name, levels = c('SSP 5-8.5','SSP 2-4.5','Historic'))) %>% 
+      group_by(source_name,source,ens,huc4) %>% 
+      mutate(
+        y05 = quantile(maxivt,0.05),
+        y95 = quantile(maxivt,0.95)) %>% 
+      ungroup %>% group_by(source) %>% 
+      mutate(
+        dodge = seq(-0.32,0.32,length.out = length(unique(ens)))[ens]) %>% 
+      ungroup %>% 
+      filter(maxivt < y05 | maxivt > y95),
+    aes(x = maxivt, y = as.numeric(factor(source_name))+dodge),
+    size = 0.5) + 
   geom_text(
+    data = stats_all,
     aes(x = 1650, y = 3.25, label = tag),
     family = 'Segoe UI', size = 10/.pt, fontface = 'bold') + 
   facet_wrap(~huc4, ncol = 2, dir = 'v', strip.position = 'left') +
-  scale_fill_manual(values = scico(7, palette = 'roma')[3:1]) +
+  scale_fill_manual(values = scico(7, palette = 'roma')) +
   scale_x_continuous('Maximum 24-Hour IVT (kg/m/s)', breaks = 250*(0:10)) +
   geom_hline(yintercept = 0.4) + 
   ggtitle('Sequence Intensity') +
@@ -1382,24 +1426,53 @@ ggplot(stats_all) +
     strip.placement = 'inside',
     axis.title.y = element_blank(),
     axis.line = element_line(color = NA)) 
-ggsave('_figures/s4_intensity.png', width = 6, height = 7)
+ggsave('_figures/s7_intensity.png', width = 6, height = 7, dpi = 600)
 
 ```
 
-# FIG S5: Sequence duration boxplots
+# FIG S8: Sequence duration boxplots
 
 ```{r}
 ggplot(stats_all) + 
-  stat_boxplot_custom(
-    aes(x = duration, y = source_name, group = paste(source,ens), fill = source),
-    qs = c(.05, .25, .5, .75, .95),
-    outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.5,
-    show.legend = FALSE) + 
+  # stat_boxplot_custom(
+  #   aes(x = duration, y = source_name, group = paste(source,ens), fill = source),
+  #   qs = c(.05, .25, .5, .75, .95),
+  #   outlier.size = 0.5, size = 0.25, outlier.alpha = 1, alpha = 0.5,
+  #   show.legend = FALSE) + 
+  geom_boxplot(
+    data = stats_all %>%
+      mutate(source_name = factor(source_name, levels = c('SSP 5-8.5','SSP 2-4.5','Historic'))) %>% 
+      group_by(source_name,source,ens,huc4) %>%
+      summarize(
+        y05 = quantile(duration,0.05),
+        y25 = quantile(duration,0.25),
+        y50 = quantile(duration,0.50),
+        y75 = quantile(duration,0.75),
+        y95 = quantile(duration,0.95)),
+    aes(
+      xmin = y05, xlower = y25, xmiddle = y50, xupper = y75, xmax = y95,
+      y = source_name, group = paste(source_name,ens), fill = source_name),
+    stat = 'identity', position = 'dodge',
+    width = 0.8, size = 0.25, alpha = 0.5, show.legend = FALSE) +
+  geom_point(
+    data = stats_all %>% 
+      mutate(source_name = factor(source_name, levels = c('SSP 5-8.5','SSP 2-4.5','Historic'))) %>% 
+      group_by(source_name,source,ens,huc4) %>% 
+      mutate(
+        y05 = quantile(duration,0.05),
+        y95 = quantile(duration,0.95)) %>% 
+      ungroup %>% group_by(source) %>% 
+      mutate(
+        dodge = seq(-0.32,0.32,length.out = length(unique(ens)))[ens]) %>% 
+      ungroup %>% 
+      filter(duration < y05 | duration > y95),
+    aes(x = duration, y = as.numeric(factor(source_name))+dodge),
+    size = 0.5) + 
   geom_text(
     aes(x = 140, y = 3.25, label = tag),
     family = 'Segoe UI', size = 10/.pt, fontface = 'bold') +
   facet_wrap(~huc4, ncol = 2, dir = 'v', strip.position = 'left') +
-  scale_fill_manual(values = scico(7, palette = 'roma')[5:7]) +
+  scale_fill_manual(values = scico(7, palette = 'roma')[7:5]) +
   scale_x_continuous('Duration (days)', breaks = 30*(0:10)) +
   geom_hline(yintercept = 0.4) + 
   ggtitle('Sequence Duration') +
@@ -1411,7 +1484,7 @@ ggplot(stats_all) +
     strip.placement = 'inside',
     axis.title.y = element_blank(),
     axis.line = element_line(color = NA)) 
-ggsave('_figures/s5_duration.png', width = 6, height = 7, units = 'in')
+ggsave('_figures/s8_duration.png', width = 6, height = 7, dpi = 600)
 
 ```
 

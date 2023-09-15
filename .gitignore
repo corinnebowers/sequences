@@ -1,9 +1,15 @@
 ## general
 _figures/
+_figures-impacts/
 _data/_old/
 _data/WBD/
 **readme.Rmd
 **.Rdata
+*.png
+
+## _data/ARTMIP
+_data/ARTMIP/Tier 1/
+_data/ARTMIP/Tier 2/
 
 ## _data/GFDL
 _data/GFDL/raw/*.log
@@ -25,6 +31,7 @@ _data/streamflow/peakflows.Rmd
 
 ## _data/WLDAS
 _data/WLDAS/files/
+_data/WLDAS/files_merra/
 
 ## results
 _results/_old/

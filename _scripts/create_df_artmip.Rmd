@@ -40,7 +40,7 @@ knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
 
 ```{r}
 ## load packages & functions
-source('_data/setup.R')
+source('_data/setup_impacts.R')
 source('_scripts/create_df_functions.R')
 # cores <- parallel::detectCores()-2
 
@@ -50,6 +50,12 @@ mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
 progress <- TRUE
 if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 
+## set number of bootstrapped samples
+boot <- 1000
+
+## set random seed for reproducibility
+set.seed(2023)
+
 ```
 
 ## choose ARDT
@@ -58,7 +64,7 @@ if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
 ardtnames <- c(
   'brands','cascade','connect','gershunov','goldenson','guanwaliser','lbnl',
   'lora','mattingly','mundhenk','paynemagnusdottir','rutz','scafet','walton')
-ardtname <- 'scafet'
+ardtname <- 'lbnl'
 
 ```
 
@@ -106,7 +112,7 @@ add_inter <- function(df) {
   #' Creates the colum inter.duration measuring between-event interval, in days.
   #' @param df dataframe with columns ts (datetime), ar (logical), and ivt (double)
   #' @return dataframe with new column inter.duration (double)
-  temp <- df %>% mutate(inter = !ar, inter.count = add_counter(inter))
+  temp <- df %>% mutate(inter.count = add_counter(inter))
   temp <- create_catalog(temp, 'inter', cat = FALSE, interval = 3/24) %>% 
     select(count, duration) %>% 
     setNames(paste('inter', names(.), sep = '.')) %>% 
@@ -127,6 +133,7 @@ add_category <- function(df) {
     filter(!is.na(count)) %>% 
     group_by(count) %>% 
     summarize(duration = max(duration), maxivt = max(ivt)) %>% 
+    filter(duration > 6) %>% 
     mutate(ar.cat = map2_dbl(.x = maxivt, .y = duration, .f = ~assign_AR_cat(.x,.y)))
   temp <- df %>% left_join(temp %>% select(count, ar.cat), by = 'count')
 }
@@ -135,7 +142,9 @@ mode <- function(x) ifelse(all(is.na(x)), NA, names(which.max(table(x)))[1])
 
 ```
 
-# create 3-hr dataframes 
+# create dataframes
+
+## create 3-hr dataframes 
 
 ```{r}
 ## convert from list by year to list by location
@@ -153,18 +162,27 @@ artmip_3hr <-
         data <-
           data.frame(
             ts = ts_artmip, #have to do ts_artmip[-1] for SCAFET
-            count = ardt[1:37] %>%
+            ar = ardt[1:37] %>%
               lapply(function(x) c(x[index[1],index[2],])) %>%
-              reduce(c) %>% round %>% add_counter(.))
-        data %>% 
-          transmute(ts, ar = !is.na(count), count, duration = NA) %>%
-          left_join(df_3hr[[i]] %>% select(ts,ivt,seq,seq.count), by = 'ts') %>% 
-          calculate_duration(.) %>% add_category(.) %>% 
+              reduce(c) %>% round %>% as.logical) %>% 
+          mutate(count = add_counter(ar)) %>% 
+          left_join(df_3hr[[i]] %>% select(ts,ivt,seq,seq.count), by = 'ts')
+        catalog <-
+          create_catalog(data, name = 'ar', interval = 3) %>%
+          filter(duration > 6) %>%
+          mutate(start = paste(start), end = paste(end))
+        data %>%
           rename(ar.count = count) %>% 
+          left_join(
+            catalog %>% setNames(paste('ar', names(.), sep = '.')),
+            by = 'ar.count') %>%
           mutate(
-            ar = case_when(ar.cat==0 ~ FALSE, TRUE ~ ar),
-            ar.cat = case_when(ar ~ ar.cat),
-            ar.count = case_when(ar ~ ar.count)) %>%   
+            ar = ifelse(!is.na(ar.duration), TRUE, FALSE),
+            ar.count = ifelse(!is.na(ar.duration), ar.count, NA)) %>% 
+        # data %>% 
+        #   calculate_duration(.) %>% add_category(.) %>% 
+        #   rename(ar.count = count) %>% 
+          mutate(inter = case_when(ar.cat==0 ~ TRUE, TRUE ~ !ar)) %>%
           add_inter(.)
       } else NULL
     }
@@ -173,7 +191,7 @@ Sys.time() - start
 
 ```
 
-# create 24-hr dataframes
+## create 24-hr dataframes
 
 ```{r}
 start <- Sys.time()
@@ -213,7 +231,7 @@ Sys.time() - start
 
 ```
 
-# create event catalog 
+## create event catalog 
 
 ```{r}
 start <- Sys.time()
@@ -228,13 +246,16 @@ artmip_catalog <-
       if (progress) setTxtProgressBar(pb,i)
       if (i %in% index_ca) {
         artmip_3hr[[i]] %>% 
-          filter(!is.na(ar.count)) %>% 
+          ###
+          mutate(
+            ar = case_when(ar.cat==0 ~ FALSE, TRUE ~ ar),
+            ar.cat = case_when(ar ~ ar.cat),
+            ar.count = case_when(ar ~ ar.count)) %>% 
+          ###
+          filter(!is.na(ar.count)) %>% select(-ar) %>% 
           group_by(ar.count) %>% 
           summarize(
-            start = ts[1], end = ts[length(ts)], 
-            maxivt = max(ivt), duration = max(duration), 
-            ar.cat = ar.cat[1],
-            seq = seq[1], seq.count = seq.count[1],
+            across(c(starts_with('ar'), starts_with('seq')), ~.[1]),
             prev.inter = prev.inter[1],
             next.inter = next.inter[length(ar.count)]) %>% 
           mutate(
@@ -256,7 +277,7 @@ Sys.time() - start
 
 ```
 
-# save out
+## save out
 
 ```{r}
 ## save out
@@ -266,4 +287,132 @@ save(
 
 ```
 
+# calculate coefficients
+
+## load data
+
+```{r}
+# load(paste0('_data/ARTMIP/Tier 1/df_',ardtname,'.Rdata'))
+
+df_3hr <- artmip_3hr
+df_24hr <- artmip_24hr
+df_catalog <- artmip_catalog
+
+```
+
+## Create AR event catalog 
+
+```{r}
+## keep WY 1981-2021 (for category analysis)
+catalog.full <- df_catalog %>% 
+  reduce(rbind) %>% 
+  mutate(wy = wateryear(ar.start)) %>%
+  filter(wateryear(ar.start) %in% 1981:2021)
+  
+## keep WY 1997-2021 (for impact analysis)
+catalog <- catalog.full %>%
+  filter(wateryear(ar.start) %in% 1997:2021) %>%
+  mutate(
+    ncei_damage = setNA(ncei_damage,0), 
+    claims_value = setNA(claims_value,0),
+    ncei_nonzero = ncei_event > 0,  # %%%%%%%%%%%%%%%%% should this be different?
+    nfip_nonzero = claims_num > 0) # %%%%%%%%%%%%%%%%% should this be different?
+
+```
+
+## Result #2: Sequences and likelihood of impact
+
+```{r}
+daily <- 
+  map_dfr(
+    .x = index_ca, 
+    .f = ~df_24hr[[.x]] %>% mutate(id = .x)) %>% 
+  mutate(
+    impactday = claims_num>0 | ncei_event,
+    lossday = claims_value>0 | ncei_damage>0) %>% 
+  mutate(wy = wateryear(date)) %>% 
+  filter(wy %in% 1997:2021)
+
+f2 <- felm(
+  impactday ~ ar*seq - seq | factor(id) + factor(wy), 
+  data = daily, exactDOF = TRUE)
+impact <- coef(summary(f2)) %>% data.frame
+
+```
+
+## Result #3: Sequences and magnitude of impact
+
+```{r}
+## NCEI
+index.ncei.zero <- which(catalog$ncei_damage == 0)
+index.ncei.nonzero <- which(catalog$ncei_damage > 0)
+coef.under <-
+  foreach (b = 1:boot) %do% {
+    felm(
+      log10(ncei_damage+1) ~ factor(ar.cat) + seq | factor(id) + factor(wy),
+      data = catalog %>% 
+        slice(c(index.ncei.nonzero, sample(
+          index.ncei.zero, size = 2*length(index.ncei.nonzero), replace = FALSE))),
+      exactDOF = TRUE) %>%
+      summary %>% coef
+  } %>% 
+  lapply(function(x) {
+    if (dim(x)[1] < 5) {
+      x %>% data.frame %>% rownames_to_column %>%
+        full_join(data.frame(rowname = c(paste0('factor(ar.cat)',2:5),'seqTRUE'))) %>%
+        arrange(rowname) %>% 
+        column_to_rownames %>% as.matrix
+    } else x
+  }) %>% abind(along = 3) %>% apply(c(1,2),Mean)
+df.ncei <- coef.under %>% data.frame %>%
+  rownames_to_column %>% 
+  transmute(
+    cat = c(gsub('factor\\(ar\\.cat\\)','',rowname[-length(rowname)]),NA),
+    seq = c(rep(NA, nrow(.)-1),TRUE),
+    est = 10^Estimate, 
+    lower = 10^(Estimate-2*Std..Error), 
+    upper = 10^(Estimate+2*Std..Error)) %>%
+  rbind(data.frame(cat = 1, seq = NA, est = 1, lower = 1, upper = 1))
+
+## NFIP
+index.nfip.zero <- which(catalog$claims_value == 0)
+index.nfip.nonzero <- which(catalog$claims_value > 0)
+coef.under <- 
+  foreach (b = 1:boot) %do% {
+    felm(
+      log10(claims_value+1) ~ factor(ar.cat) + seq | factor(id) + factor(wy),
+      data = catalog %>% 
+        slice(c(index.nfip.nonzero, sample(
+          index.nfip.zero, size = 2*length(index.nfip.nonzero), replace = FALSE))),
+      exactDOF = TRUE) %>% 
+      summary %>% coef
+  } %>% 
+  lapply(function(x) {
+    if (dim(x)[1] < 5) {
+      x %>% data.frame %>% rownames_to_column %>%
+        full_join(data.frame(rowname = c(paste0('factor(ar.cat)',2:5),'seqTRUE'))) %>%
+        arrange(rowname) %>% 
+        column_to_rownames %>% as.matrix
+    } else x
+  }) %>% abind(along = 3) %>% apply(c(1,2),Mean)
+df.nfip <- coef.under %>% data.frame %>% 
+  rownames_to_column %>% 
+  transmute(
+    cat = c(gsub('factor\\(ar\\.cat\\)','',rowname[-length(rowname)]),NA),
+    seq = c(rep(NA, nrow(.)-1),TRUE),
+    est = 10^Estimate, 
+    lower = 10^(Estimate-2*Std..Error), 
+    upper = 10^(Estimate+2*Std..Error)) %>% 
+  rbind(data.frame(cat = 1, seq = NA, est = 1, lower = 1, upper = 1))
+
+```
+
+## Save coefficient estimates
+
+```{r}
+save(
+  impact, df.ncei, df.nfip, 
+  file = paste0('_data/ARTMIP/Tier 1/coef_',ardtname,'.Rdata'))
+
+```
 

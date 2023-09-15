@@ -1,0 +1,258 @@
+---
+title: "Supplementary Figures"
+subtitle: "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California"
+date: "2023-09-15"
+author: Corinne Bowers
+output:
+  html_document:
+    toc: true 
+    toc_float: true
+    #toc_depth: 3  
+    code_folding: hide
+    number_sections: false 
+    theme: spacelab   #https://www.datadreaming.org/post/r-markdown-theme-gallery/
+    highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighting-examples/
+---
+
+This markdown script reproduces the supplementary figures associated with the paper "Temporal Compounding Increases Socioeconomic Impacts of Atmospheric Rivers in California" (doi:XX).
+
+# Setup
+
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center', fig.width=6)
+rm(list=ls())
+
+```
+
+## Functions & packages
+
+```{r warning=FALSE}
+source('_data/setup_impacts.R')
+source('_scripts/create_df_functions.R')
+
+## set number of bootstrapped samples
+boot <- 1000
+
+## turn progress bars on/off
+progress <- FALSE
+if (progress) pb <- txtProgressBar(min = 0, max = ncell(grid_ca), style = 3)
+
+## set random seed for reproducibility
+set.seed(2023)
+
+```
+
+```{r}
+ardtnames <- c(
+  'brands','cascade','connect','gershunov','goldenson','guanwaliser',#'lbnl',
+  'lora','mattingly','mundhenk','paynemagnusdottir','rutz','scafet','walton')
+
+```
+
+## Load data
+
+```{r}
+load('_scripts/_checkpoints/df_3hr_1209.Rdata')
+load('_scripts/_checkpoints/df_24hr_0209.Rdata')
+
+```
+
+## Add inter-event time to df_3hr
+
+```{r}
+df_3hr <- 
+  foreach (i = 1:ncell(grid_ca)) %do% {
+    if (progress) setTxtProgressBar(pb, i)
+    if (i %in% index_ca) {
+      temp <- df_3hr[[i]] %>% 
+        mutate(
+          ar = case_when(ar.cat==0 ~ FALSE, TRUE ~ ar),
+          ar.cat = case_when(ar ~ ar.cat),
+          ar.count = case_when(ar ~ ar.count)) %>% 
+        mutate(inter = !ar, inter.count = add_counter(inter))
+      temp <- create_catalog(temp, 'inter', cat = FALSE, interval = 3/24) %>% 
+        select(count, duration) %>% 
+        setNames(paste('inter', names(.), sep = '.')) %>% 
+        left_join(temp, ., by = 'inter.count')
+      temp <- temp %>% 
+        select(ar.count, ar.cat, inter.duration) %>% 
+        mutate(
+          inter.duration = setNA(inter.duration,0),
+          prev.inter = c(NA, inter.duration[-nrow(.)]),
+          next.inter = c(inter.duration[-1], NA)) %>% 
+        filter(!is.na(ar.count)) %>% 
+        group_by(ar.count = toNumber(ar.count)) %>% 
+        summarize(
+          prev.inter = prev.inter[1],
+          next.inter = next.inter[length(ar.count)],
+          ar.cat = ar.cat[1]) %>% 
+        mutate(
+          prev.cat = c(NA, ar.cat[-nrow(.)]),
+          next.cat = c(ar.cat[-1], NA),
+          prev.inter = c(NA, prev.inter[-1]), 
+          next.inter = c(next.inter[-nrow(.)], NA)) %>% 
+        select(-ar.cat)
+      df_3hr[[i]] %>% left_join(temp, by = 'ar.count')
+    } else NULL
+  }
+
+```
+
+# FIG S1: Effect of between-event interval on probability of adjacent ARs and probability of sandwiched ARs
+
+```{r}
+proxplus <-  
+  foreach (i = 1:ncell(grid_ca), .combine = 'rbind') %:% 
+  foreach (int = c(1,3,5,7,10), .combine = 'rbind') %do% {
+    if (progress) setTxtProgressBar(pb, i)
+    if (i %in% index_ca) {
+      df_3hr[[i]] %>% 
+        filter(wateryear(ts) %in% 1981:2021) %>% 
+        filter(ar.cat > 0) %>% 
+        group_by(ar.count) %>% 
+        summarize(ar.cat = ar.cat[1], before = prev.inter[1]<=int, after = next.inter[1]<=int) %>% 
+        group_by(ar.cat) %>% 
+        summarize(
+          n = length(ar.cat),
+          and = Sum(before & after)/n, or = Sum(before | after)/n) %>% 
+        mutate(id = i, int = int)    
+    }
+  } %>% 
+  left_join(raster.df(grid_ca), by = c('id' = 'value'))
+
+# ggplot(proxplus) + 
+#   geom_histogram(aes(x = or), bins = sqrt(nrow(proxplus)/5), color = NA, fill = 'grey20') + 
+#   facet_grid(int ~ ar.cat) + 
+#   scale_y_origin()
+
+```
+
+```{r}
+g1 <- ggplot(proxplus) + 
+  geom_vline(xintercept = factor(5, levels = c(1,3,5,7,10)), linetype = 'dashed', color = 'grey80') + 
+  geom_line(aes(y = or, x = factor(int), group = id), alpha = 0.2, size = 0.25) + 
+  facet_wrap(~paste0('AR',ar.cat), nrow = 1) + 
+  scale_y_origin(labels = percent) + 
+  labs(x = 'Between-Event Interval (Days)', y = 'Adjacent Probability') + 
+  theme(
+    strip.background = element_rect(color = NA, fill = 'grey95'),
+    strip.text = element_text(margin = margin(2,2,2,2)),
+    axis.title.x = element_blank(),
+    panel.grid.major.y = element_line(size = 0.25))
+g2 <- ggplot(proxplus) + 
+  geom_vline(xintercept = factor(5, levels = c(1,3,5,7,10)), linetype = 'dashed', color = 'grey80') + 
+  geom_line(aes(y = and, x = factor(int), group = id), alpha = 0.2, size = 0.25) + 
+  facet_wrap(~paste0('AR',ar.cat), nrow = 1) + 
+  scale_y_origin(labels = percent) + 
+  labs(x = 'Between-Event Interval (Days)', y = 'Sandwiched Probability') + 
+  coord_cartesian(ylim = c(0,0.6)) + 
+  theme(
+    strip.background = element_rect(color = NA, fill = 'grey95'),
+    strip.text = element_text(margin = margin(2,2,2,2)),
+    panel.grid.major.y = element_line(size = 0.25))
+g1 / g2
+ggsave('_figures-impacts/reviewer_figb.png', width = 7.25, height = 4, dpi = 500)
+
+```
+
+# FIG S2: Sensitivity of the effect of sequences on probability of flood-related impact to different AR detection algorithms
+
+```{r}
+impact.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    impact %>% data.frame %>% rownames_to_column %>% mutate(ardt = x)
+  }
+
+g1 <- impact.all %>% 
+  filter(rowname == 'arTRUE:seqTRUE') %>% 
+  arrange(desc(Estimate)) %>% 
+  mutate(lower = Estimate-2*Std..Error, upper = Estimate+2*Std..Error) %>% 
+  rename(est = Estimate) %>% 
+  mutate(ardt = fct_inorder(ardt)) %>% 
+  ggplot() + 
+  geom_point(aes(y = ardt, x = est, color = ardt=='rutz'), size = 1.5) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper, color = ardt=='rutz'), size = 0.75) + 
+  scale_color_manual(values = c('grey10',ggcolor(2)[1])) +
+  guides(color = guide_none()) + 
+  scale_x_origin('Effect of Sequences on AR Days', labels = percent) + 
+  theme(
+    panel.grid.major.x = element_line(size = 0.25),
+    axis.title.y = element_blank())
+g2 <- impact.all %>% 
+  filter(rowname == 'arFALSE:seqTRUE') %>% 
+  arrange(desc(Estimate)) %>% 
+  mutate(lower = Estimate-2*Std..Error, upper = Estimate+2*Std..Error) %>% 
+  rename(est = Estimate) %>% 
+  mutate(ardt = fct_inorder(ardt)) %>% 
+  ggplot() + 
+  geom_point(aes(y = ardt, x = est, color = ardt=='rutz'), size = 1.5) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper, color = ardt=='rutz'), size = 0.75) + 
+  scale_color_manual(values = c('grey10',ggcolor(2)[1])) +
+  guides(color = guide_none()) + 
+  scale_x_origin('Effect of Sequences on Non-AR Days', labels = percent) + 
+  theme(
+    panel.grid.major.x = element_line(size = 0.25),
+    axis.title.y = element_blank())
+g1 + g2 + plot_annotation(tag_levels = 'A') & 
+  theme(
+    plot.tag = element_text(family = 'Segoe UI', size = 10, face = 'bold'),
+    plot.tag.position = c(0,1))
+ggsave('_figures-impacts/ardt1.png', width = 6, height = 4)
+
+```
+
+# FIG S3: Sensitivity of the effect of sequences on loss to different AR detection algorithms
+
+```{r}
+ncei.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    df.ncei %>% mutate(ardt = x)
+  }
+nfip.all <- 
+  foreach (x = ardtnames, .combine = 'rbind') %do% {
+    load(paste0('_data/ARTMIP/Tier 1/coef_',x,'.Rdata'))
+    df.nfip %>% mutate(ardt = x)
+  }
+
+g1 <- ncei.all %>% filter(seq) %>% 
+  filter(ardt != 'lbnl') %>% 
+  arrange(desc(est)) %>% 
+  mutate(ardt = fct_inorder(ardt)) %>% 
+  ggplot() + 
+  geom_vline(xintercept = 1, color = 'grey70') +
+  geom_point(aes(y = ardt, x = est, color = ardt=='rutz'), size = 1.5) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper, color = ardt=='rutz'), size = 0.75) +
+  scale_color_manual(values = c('grey10',ggcolor(2)[1])) +
+  guides(color = guide_none()) + 
+  scale_x_log10('NCEI Sequence Loss Multiplier') + 
+  annotation_logticks(sides = 'b', size = 0.25, color = 'grey25') + 
+  theme(
+    panel.grid.major.x = element_line(size = 0.25),
+    axis.title.y = element_blank())
+g2 <- nfip.all %>% filter(seq) %>% 
+  filter(ardt != 'lbnl') %>% 
+  arrange(desc(est)) %>% 
+  mutate(ardt = fct_inorder(ardt)) %>% 
+  ggplot() + 
+  geom_vline(xintercept = 1, color = 'grey70') + 
+  geom_point(aes(y = ardt, x = est, color = ardt=='rutz'), size = 1.5) + 
+  geom_linerange(aes(y = ardt, xmin = lower, xmax = upper, color = ardt=='rutz'), size = 0.75) +
+  scale_color_manual(values = c('grey10',ggcolor(2)[1])) +
+  guides(color = guide_none()) + 
+  scale_x_log10('NFIP Sequence Loss Multiplier') + 
+  annotation_logticks(sides = 'b', size = 0.25, color = 'grey25') + 
+  theme(
+    panel.grid.major.x = element_line(size = 0.25),
+    axis.title.y = element_blank())
+g1 + g2 + plot_annotation(tag_levels = 'A') & 
+  theme(
+    plot.tag = element_text(family = 'Segoe UI', size = 10, face = 'bold'),
+    plot.tag.position = c(0,1))
+ggsave('_figures-impacts/ardt2.png', width = 6, height = 4)
+
+```
+

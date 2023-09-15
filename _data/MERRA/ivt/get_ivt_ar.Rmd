@@ -10,11 +10,11 @@ highlight: tango  #https://www.garrickadenbuie.com/blog/pandoc-syntax-highlighti
 This script downloads MERRA-2 IVT data and AR identification data from the FTP hosted by Jonathan Rutz and UCSD.
 
 ```{r setup, include=FALSE}
-knitr::opts_knit$set(root.dir = 'D:/2-sequences/')
+knitr::opts_knit$set(root.dir = 'D:/02-sequences/')
 # knitr::opts_knit$set(root.dir = '/scratch/users/cbowers/sequences/')
 knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 knitr::opts_chunk$set(results = 'hold', fig.show = 'hold', fig.align = 'center')
-rm(list=ls())
+# rm(list=ls())
 
 ```
 
@@ -36,7 +36,7 @@ source('_scripts/create_df_functions.R')
 cores <- parallel::detectCores()-2
 
 ## define custom function to convert .nc array output to raster bricks
-array_to_raster <- function(x) {
+array_to_raster <- function(x, lon_subset, lat_subset) {
   x %>% 
     aperm(c(2,1,3)) %>% 
     brick(
@@ -55,6 +55,16 @@ array_to_raster <- function(x) {
 ts_merra <- 
   seq(ymd_hms('1980-1-1 00:00:00'), ymd_hms('2021-12-31 21:00:00'), by = '3 hours')
 dates_merra <- ts_merra %>% as.Date %>% unique
+
+# ## subset global grid to NE Pacific + WUS
+# lon_subset <- lon[lon >= -150 & lon <= -110]
+# lat_subset <- lat[lat >= 20 & lat <= 60]
+
+## subset global grid to California
+head(lon); head(lat)
+lon_subset <- lon[lon %in% unique(coordinates(grid_ca)[,'x'])]
+lat_subset <- lat[lat %in% unique(coordinates(grid_ca)[,'y'])]
+head(lon_subset); head(lat_subset)
 
 ## find indices of lat/lon subset within global grid
 lon.match <- which(lon %in% lon_subset)
@@ -106,10 +116,12 @@ IVT_AR <-
     .packages = c('ncdf4', 'raster', 'tidyverse', 'lubridate'),
     .export = 'array_to_raster') %dopar% {
       nc <- nc_open(paste0(dest, tbl[i]))
-      ivt <- ncvar_get(nc, 'IVT', start = dim.start, count = dim.count)
-      ar <- ncvar_get(nc, 'ARs', start = dim.start, count = dim.count)
+      ivt <- ncvar_get(nc, 'IVT', start = dim.start, count = dim.count) %>%
+        array_to_raster(.,lon_subset,lat_subset)
+      ar <- ncvar_get(nc, 'ARs', start = dim.start, count = dim.count) %>% 
+        array_to_raster(.,lon_subset,lat_subset)
       nc_close(nc)
-      list(array_to_raster(ivt), array_to_raster(ar))
+      list(ivt,ar)
     }
 stopCluster(cl)
 Sys.time() - start
