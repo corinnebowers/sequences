@@ -10,7 +10,7 @@ The markdown files are also available as interactive HTML documents through the 
 
 ## Atmospheric River Sequences as Indicators of Hydrologic Hazard in Present and Future Climates
 
-* [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures.html) replicates all figures and numerical results from the main body of the paper, excepting Figure 2.
+* [reproduce_figures_sequences.html](https://corinnebowers.github.io/reproduce_figures_sequences.html) replicates all figures and numerical results from the main body of the paper, excepting Figure 2.
 * [reproduce_fig2_sequences.html](https://corinnebowers.github.io/reproduce_fig2_sequences.html) replicates Figure 2 from the main body of the paper.
 * [supplementary_figures.html](https://corinnebowers.github.io/supplementary_figures_sequences.html) presents the parameter sensitivity analysis and replicates all figures from the Supplemental Information.
 
