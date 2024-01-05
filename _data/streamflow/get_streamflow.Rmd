@@ -512,8 +512,9 @@ grid_convert <- grid_ca %>%
 
 ```
 
-```{r}
 ## use conversion weights to list runoff by grid cell
+
+```{r}
 runoff <- 
   foreach (i = 1:ncell(grid_ca)) %do% {
     huclist <- grid_convert %>% filter(cell==i) %>% pull(huc8)

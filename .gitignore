@@ -3,9 +3,11 @@ _figures/
 _figures-impacts/
 _data/_old/
 _data/WBD/
+_scripts/_old/
 **readme.Rmd
 **.Rdata
 *.png
+*.tif
 
 ## _data/ARTMIP
 _data/ARTMIP/Tier 1/
